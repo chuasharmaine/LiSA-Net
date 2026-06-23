@@ -77,7 +77,21 @@ params_ISIC_2018 = {
         "segmentation": "DiceLoss",
         "classification": "CrossEntropyLoss"
     },
-    "class_weight": [0.029, 1-0.029],
+    # DEFAULT: not using class weights to compute the loss function
+    # note. this is used for multitask learning with heavily skewed datasets, where cls task has imbalanced classes
+    "use_class_weight": False,
+    "class_weight": None,
+    # using class weights to compute the loss function
+    # "use_class_weight": True,
+    # "class_weight": [
+    #     1.286,  # MEL
+    #     0.213,  # NV
+    #     2.782,  # BCC
+    #     4.372,  # AKIEC
+    #     1.305,  # BKL
+    #     13.116, # DF
+    #     11.124  # VASC
+    # ],
     "sigmoid_normalization": False,
     "dice_loss_mode": "extension",
     "dice_mode": "standard",

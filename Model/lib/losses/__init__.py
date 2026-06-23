@@ -11,7 +11,6 @@ import torch
 from .DiceLoss import DiceLoss
 from .CrossEntropyLoss import CrossEntropyLoss
 
-
 def get_loss_function(opt):
     loss_functions = {}
     device = opt.get("device", "cpu")
@@ -29,8 +28,17 @@ def get_loss_function(opt):
         )
     
     if opt.get("classification", False):
-        # compute weights from dataset counts
-        loss_functions["classification"] = CrossEntropyLoss()
+        # compute weights from dataset counts 
+        # checks if class weights are provided (train.py), otherwise uses default None
+        class_weight = None
+
+        if opt.get("use_class_weight", False):
+            class_weight = opt.get("class_weight", None)
+
+            if class_weight is not None:
+                class_weight = torch.FloatTensor(class_weight).to(device)
+
+        loss_functions["classification"] = CrossEntropyLoss(weight=class_weight)
 
     if not loss_functions:
         raise RuntimeError(f"No {opt['loss_function_name']} is available")

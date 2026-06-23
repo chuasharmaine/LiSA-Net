@@ -9,8 +9,6 @@
 import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
-from .ToothDataset import ToothDataset
-from .MMOTUDataset import MMOTUDataset
 from .ISIC2018Dataset import ISIC2018Dataset
 
 
@@ -21,21 +19,8 @@ def get_dataloader(opt):
         opt: params dict
     Returns:
     """
-    if opt["dataset_name"] == "3D-CBCT-Tooth":
-        train_set = ToothDataset(opt, mode="train")
-        valid_set = ToothDataset(opt, mode="valid")
 
-        train_loader = DataLoader(train_set, batch_size=opt["batch_size"], shuffle=True, num_workers=opt["num_workers"], pin_memory=True)
-        valid_loader = DataLoader(valid_set, batch_size=1, shuffle=False, num_workers=1, pin_memory=True)
-
-    elif opt["dataset_name"] == "MMOTU":
-        train_set = MMOTUDataset(opt, mode="train")
-        valid_set = MMOTUDataset(opt, mode="valid")
-
-        train_loader = DataLoader(train_set, batch_size=opt["batch_size"], shuffle=True, num_workers=opt["num_workers"], pin_memory=True)
-        valid_loader = DataLoader(valid_set, batch_size=opt["batch_size"], shuffle=False, num_workers=opt["num_workers"], pin_memory=True)
-
-    elif opt["dataset_name"] == "ISIC-2018":
+    if opt["dataset_name"] == "ISIC-2018":
         train_set = ISIC2018Dataset(opt, mode="train")
         valid_set = ISIC2018Dataset(opt, mode="valid")
 
@@ -79,15 +64,7 @@ def get_test_dataloader(opt):
     :param opt: params dict
     :return:
     """
-    if opt["dataset_name"] == "3D-CBCT-Tooth":
-        valid_set = ToothDataset(opt, mode="valid")
-        valid_loader = DataLoader(valid_set, batch_size=opt["batch_size"], shuffle=False, num_workers=1, pin_memory=True)
-
-    elif opt["dataset_name"] == "MMOTU":
-        valid_set = MMOTUDataset(opt, mode="valid")
-        valid_loader = DataLoader(valid_set, batch_size=opt["batch_size"], shuffle=False, num_workers=1, pin_memory=True)
-
-    elif opt["dataset_name"] == "ISIC-2018":
+    if opt["dataset_name"] == "ISIC-2018":
         valid_set = ISIC2018Dataset(opt, mode="valid")
         valid_loader = DataLoader(valid_set, batch_size=opt["batch_size"], shuffle=False, num_workers=1, pin_memory=True)
 
