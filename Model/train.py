@@ -92,6 +92,9 @@ params_ISIC_2018 = {
     #     13.116, # DF
     #     11.124  # VASC
     # ],
+    # oversample minority classes to balance the class distribution
+    # DEFAULT: not oversampling minority classes
+    "oversample": False,
     "sigmoid_normalization": False,
     "dice_loss_mode": "extension",
     "dice_mode": "standard",

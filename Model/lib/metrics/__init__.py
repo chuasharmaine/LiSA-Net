@@ -6,49 +6,11 @@
 @Version  :   1.0
 @License  :   (C)Copyright 2023
 """
-from lib.metrics import Tooth
-from lib.metrics import MMOTU
 from lib.metrics import ISIC2018
 
 
 def get_metric(opt):
-    if opt["dataset_name"] == "3D-CBCT-Tooth":
-        metrics = []
-        for metric_name in opt["metric_names"]:
-            if metric_name == "DSC":
-                metrics.append(Tooth.DICE(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"], mode=opt["dice_mode"]))
-
-            elif metric_name == "ASSD":
-                metrics.append(Tooth.AverageSymmetricSurfaceDistance(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"]))
-
-            elif metric_name == "HD":
-                metrics.append(Tooth.HausdorffDistance(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"]))
-
-            elif metric_name == "SO":
-                metrics.append(Tooth.SurfaceOverlappingValues(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"], theta=1.0))
-
-            elif metric_name == "SD":
-                metrics.append(Tooth.SurfaceDice(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"], theta=1.0))
-
-            elif metric_name == "IoU":
-                metrics.append(Tooth.IoU(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"]))
-
-            else:
-                raise RuntimeError(f"No {metric_name} metric available on {opt['dataset_name']} dataset")
-
-    elif opt["dataset_name"] == "MMOTU":
-        metrics = {}
-        for metric_name in opt["metric_names"]:
-            if metric_name == "DSC":
-                metrics[metric_name] = MMOTU.DICE(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"], mode=opt["dice_mode"])
-
-            elif metric_name == "IoU":
-                metrics[metric_name] = MMOTU.IoU(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"])
-
-            else:
-                raise RuntimeError(f"No {metric_name} metric available on {opt['dataset_name']} dataset")
-
-    elif opt["dataset_name"] == "ISIC-2018":
+    if opt["dataset_name"] == "ISIC-2018":
         metrics = {}
         seg_classes = opt.get("seg_classes", 1)
         cls_classes = opt.get("cls_classes", 1)

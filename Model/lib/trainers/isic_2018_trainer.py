@@ -3,11 +3,10 @@ import time
 import numpy as np
 import datetime
 
-# try:
-#     import nni
-# except ImportError:
-#     nni = None
-import nni
+try:
+    import nni
+except ImportError:
+    nni = None
 import torch
 import torch.optim as optim
 import torch.nn as nn
@@ -301,12 +300,15 @@ class ISIC2018Trainer:
 
             # only backward if total_loss is a tensor
             if total_loss is not None:
-                if torch.isnan(total_loss) or torch.isinf(total_loss):
-                    print("Bad loss detected")
-                    continue
                 self.statistics_dict["train"]["loss"] += total_loss.item() * len(input_tensor)
                 self.optimizer.zero_grad()
                 total_loss.backward()
+                # check for NaN or Inf gradients
+                for name, param in self.model.named_parameters():
+                    if param.grad is not None:
+                        if torch.isnan(param.grad).any() or torch.isinf(param.grad).any():
+                            print("BAD GRAD:", name)
+                            break
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 self.optimizer.step()
             else:

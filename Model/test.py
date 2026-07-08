@@ -138,11 +138,7 @@ def main():
     args = parse_args()
 
     # select the dictionary of hyperparameters used for training
-    if args.dataset == "3D-CBCT-Tooth":
-        params = params_3D_CBCT_Tooth
-    elif args.dataset == "MMOTU":
-        params = params_MMOTU
-    elif args.dataset == "ISIC-2018":
+    if args.dataset == "ISIC-2018":
         params = params_ISIC_2018
     else:
         raise RuntimeError(f"No {args.dataset} dataset available")

@@ -16,13 +16,10 @@ def get_loss_function(opt):
     device = opt.get("device", "cpu")
     
     if opt.get("segmentation", False):
-        seg_classes = opt.get("seg_classes", 1)
-        seg_class_weight = opt.get("class_weight", [1.0] * seg_classes)
-        seg_weight_tensor = torch.FloatTensor(seg_class_weight).to(device)
-
+        seg_classes = opt.get("seg_classes", 1)  
         loss_functions["segmentation"] = DiceLoss(
             classes=seg_classes,
-            weight=seg_weight_tensor,
+            weight=None,
             sigmoid_normalization=opt.get("sigmoid_normalization", False),
             mode=opt.get("dice_loss_mode", "standard")
         )

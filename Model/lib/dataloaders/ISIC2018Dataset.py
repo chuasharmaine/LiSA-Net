@@ -17,6 +17,9 @@ from torch.utils.data import Dataset
 import lib.utils as utils
 import lib.transforms.two as my_transforms
 
+from collections import defaultdict
+import random
+
 
 class ISIC2018Dataset(Dataset):
     """
@@ -44,6 +47,26 @@ class ISIC2018Dataset(Dataset):
 
         self.image_paths = sorted(glob.glob(os.path.join(self.root, "images", "*.jpg")))
         self.image_names = [os.path.splitext(os.path.basename(p))[0] for p in self.image_paths]
+
+        # oversample minority classes
+        if self.opt.get("oversample", False) and self.mode == "train":
+            class_images = defaultdict(list)
+
+            for name in self.image_names:
+                label = np.argmax(self.cls_labels_dict[name])
+                class_images[label].append(name)
+            target = max(len(v) for v in class_images.values())
+            balanced_names = []
+
+            for label, images in class_images.items():
+                # add original images
+                balanced_names.extend(images)
+                # add duplicates only for minority classes
+                if len(images) < target:
+                    extra = random.choices(images, k=target - len(images))
+                    balanced_names.extend(extra)
+
+            self.image_names = balanced_names
 
         self.cls_labels_dict = {}
         # Classification
