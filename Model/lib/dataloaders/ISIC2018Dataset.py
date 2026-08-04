@@ -70,16 +70,16 @@ class ISIC2018Dataset(Dataset):
                 label = np.argmax(self.cls_labels_dict[name])
                 class_images[label].append(name)
             target = max(len(v) for v in class_images.values())
+
+            max_multiplier = 2
             balanced_names = []
-
             for label, images in class_images.items():
-                # add original images
                 balanced_names.extend(images)
-                # add duplicates only for minority classes
-                if len(images) < target:
-                    extra = random.choices(images, k=target - len(images))
+                desired = min(target, len(images) * max_multiplier)
+                if len(images) < desired:
+                    extra = random.choices(images, k=desired - len(images))
                     balanced_names.extend(extra)
-
+                
             self.image_names = balanced_names
 
         # transforms
