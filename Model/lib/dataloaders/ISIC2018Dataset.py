@@ -48,8 +48,22 @@ class ISIC2018Dataset(Dataset):
         self.image_paths = sorted(glob.glob(os.path.join(self.root, "images", "*.jpg")))
         self.image_names = [os.path.splitext(os.path.basename(p))[0] for p in self.image_paths]
 
+        self.cls_labels_dict = {}
+        # Classification
+        if self.classification:
+            label_csv = os.path.join(self.root, "labels.csv")
+            with open(label_csv, "r") as f:
+                reader = csv.reader(f)
+                header = next(reader)  
+                for row in reader:
+                    image_id = row[0]
+                    labels = list(map(float, row[1:]))
+                    self.cls_labels_dict[image_id] = labels
+
+            self.image_names = [n for n in self.image_names if n in self.cls_labels_dict]
+
         # oversample minority classes
-        if self.opt.get("oversample", False) and self.mode == "train":
+        if self.opt.get("oversample", False) and self.mode == "train" and self.classification:
             class_images = defaultdict(list)
 
             for name in self.image_names:
@@ -67,20 +81,6 @@ class ISIC2018Dataset(Dataset):
                     balanced_names.extend(extra)
 
             self.image_names = balanced_names
-
-        self.cls_labels_dict = {}
-        # Classification
-        if self.classification:
-            label_csv = os.path.join(self.root, "labels.csv")
-            with open(label_csv, "r") as f:
-                reader = csv.reader(f)
-                header = next(reader)  
-                for row in reader:
-                    image_id = row[0]
-                    labels = list(map(float, row[1:]))
-                    self.cls_labels_dict[image_id] = labels
-
-            self.image_names = [n for n in self.image_names if n in self.cls_labels_dict]
 
         # transforms
         self.transforms_dict = {
