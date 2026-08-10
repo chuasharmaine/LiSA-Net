@@ -146,9 +146,9 @@ class ISIC2018Trainer:
                     valid_mean_IoU,
                     valid_ACC_seg,
                     valid_ACC_cls,
-                    valid_JI,
                     valid_F1,
                     valid_AUC,
+                    valid_JI,
                     best_JI,
                     best_AUC
                 ]
@@ -584,6 +584,30 @@ class ISIC2018Trainer:
             save_filename = '{}_{}.pth'.format(type, self.opt["model_name"])
         save_path = os.path.join(self.checkpoint_dir, save_filename)
         torch.save(self.model.state_dict(), save_path)
+        # if multitask, save combined checkpoint
+        if type in {"best_seg", "best_cls"} and self.opt["segmentation"] and self.opt["classification"]:
+            self.combine_multitask_checkpoint()
+
+    def combine_multitask_checkpoint(self):
+        model_name = self.opt["model_name"]
+        seg_path = os.path.join(self.checkpoint_dir, f"best_seg_{model_name}.pth")
+        cls_path = os.path.join(self.checkpoint_dir, f"best_cls_{model_name}.pth")
+        if not (os.path.exists(seg_path) and os.path.exists(cls_path)):
+            return
+
+        seg_state = torch.load(seg_path, map_location="cpu", weights_only=False)
+        cls_state = torch.load(cls_path, map_location="cpu", weights_only=False)
+        cls_prefixes = ("classifier_fc.", "cls_head.", "fc.")
+        cls_keys = [key for key in cls_state if key.startswith(cls_prefixes)]
+        if not cls_keys:
+            raise RuntimeError(f"No classification-head parameters found for {model_name}.")
+        merged_state = dict(seg_state)
+        for key in cls_keys:
+            if key not in merged_state or merged_state[key].shape != cls_state[key].shape:
+                raise RuntimeError(f"Incompatible multitask checkpoint parameter: {key}")
+            merged_state[key] = cls_state[key]
+
+        torch.save(merged_state, os.path.join(self.checkpoint_dir, f"best_{model_name}.pth"))
 
     def load(self):
         if self.opt["resume"] is not None:

@@ -149,12 +149,13 @@ class ISIC2018Tester:
         if self.opt["segmentation"]:
             class_IoU = self.statistics_dict["total_area_intersect"] / self.statistics_dict["total_area_union"]
             class_IoU = np.nan_to_num(class_IoU)
-            dsc = self.statistics_dict["DSC_sum"] / self.statistics_dict["count"]
-            JI = self.statistics_dict["JI_sum"] / self.statistics_dict["count"]
-            ACC_seg = self.statistics_dict["ACC_seg_sum"] / self.statistics_dict["count"] if "ACC_SEG" in self.statistics_dict else 0
+            seg_count = max(1, self.statistics_dict["seg_count"])
+            dsc = self.statistics_dict["DSC_sum"] / seg_count
+            JI = self.statistics_dict["JI_sum"] / seg_count
+            ACC_seg = self.statistics_dict["ACC_seg_sum"] / seg_count if "ACC_SEG" in self.statistics_dict else 0
             print("valid_DSC:{:.6f}  valid_IoU:{:.6f}  valid_ACC:{:.6f}  valid_JI:{:.6f}".format(dsc, class_IoU[1], ACC_seg, JI))
         if self.opt["classification"]:
-            ACC_cls = self.statistics_dict.get("ACC_cls_sum", 0) / self.statistics_dict["count"]
+            ACC_cls = self.statistics_dict.get("ACC_cls_sum", 0) / max(1, self.statistics_dict["cls_count"])
             AUC_ROC = self.metrics["AUC_ROC"].compute()
             F1_MACRO = self.metrics["F1_MACRO"].compute()
             
@@ -168,8 +169,15 @@ class ISIC2018Tester:
         )
 
         unique_index = torch.unique(target).int()
+        mask = torch.zeros(num_classes, dtype=torch.float32)
+        for index in unique_index:
+            if 0 <= index < num_classes:
+                mask[index] = 1
 
-        self.statistics_dict["count"] += cur_batch_size
+        if task == "segmentation":
+            self.statistics_dict["seg_count"] += cur_batch_size
+        else:
+            self.statistics_dict["cls_count"] += cur_batch_size
         for i, class_name in self.opt["index_to_class_dict"].items():
             if i >= num_classes:
                 continue
@@ -179,6 +187,8 @@ class ISIC2018Tester:
 
         for metric_name, metric_func in self.metrics.items():
             if task == "segmentation":
+                if metric_name in {"ACC_CLS", "AUC_ROC", "F1_MACRO"}:
+                    continue
                 if metric_name == "IoU":
                     area_intersect, area_union, _, _ = metric_func(output, target)
                     self.statistics_dict["total_area_intersect"] += area_intersect.numpy()
@@ -198,6 +208,8 @@ class ISIC2018Tester:
                     for j, class_name in self.opt["index_to_class_dict"].items():
                         self.statistics_dict[metric_name][class_name] += per_class_metric[j].item() * cur_batch_size
             elif task == "classification":
+                if metric_name in {"ACC_SEG", "DSC", "IoU", "JI"}:
+                    continue
                 if metric_name == "ACC_CLS":
                     self.statistics_dict["ACC_cls_sum"] += metric_func(output, target) * cur_batch_size
                 elif metric_name == "AUC_ROC":
@@ -222,12 +234,14 @@ class ISIC2018Tester:
         for metric_name in self.opt["metric_names"]:
             statistics_dict[metric_name]["avg"] = 0.0
         statistics_dict["class_count"] = {class_name: 0 for _, class_name in self.opt["index_to_class_dict"].items()}
-        statistics_dict["count"] = 0
+        statistics_dict["seg_count"] = 0
+        statistics_dict["cls_count"] = 0
 
         return statistics_dict
 
     def reset_statistics_dict(self):
-        self.statistics_dict["count"] = 0
+        self.statistics_dict["seg_count"] = 0
+        self.statistics_dict["cls_count"] = 0
         num_classes = (
             self.opt["seg_classes"] if self.opt.get("segmentation") 
             else self.opt["cls_classes"]
@@ -246,7 +260,10 @@ class ISIC2018Tester:
                 self.statistics_dict[metric_name][class_name] = 0.0
 
     def load(self):
-        pretrain_state_dict = torch.load(self.opt["pretrain"], map_location=self.device)
+        checkpoint = torch.load(self.opt["pretrain"], map_location=self.device, weights_only=False)
+        pretrain_state_dict = checkpoint.get("model", checkpoint.get("state_dict", checkpoint)) if isinstance(checkpoint, dict) else checkpoint
+        if not isinstance(pretrain_state_dict, dict):
+            raise TypeError("Checkpoint must be a model state_dict or contain one under 'model' or 'state_dict'.")
         model_state_dict = self.model.state_dict()
         load_count = 0
         for param_name in model_state_dict.keys():
