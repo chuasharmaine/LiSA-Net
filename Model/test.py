@@ -129,7 +129,7 @@ def parse_args():
             params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI", "ACC_CLS", "AUC_ROC", "F1_MACRO"]
             params["seg_classes"] = 2 
             params["cls_classes"] = 7 
-            params["seg_guided_cls"] = True
+            params["seg_guided_cls"] = False
     return args
 
 

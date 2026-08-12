@@ -121,6 +121,9 @@ def parse_args():
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version of PMFSNet")
     parser.add_argument("--epoch", type=int, default=150, help="training epoch")
     parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
+    # for specific learning rates
+    parser.add_argument("--lr_seg", type=float, default=None, help="seg-head learning rate for LiSANetMT training")
+    parser.add_argument("--lr_cls", type=float, default=None, help="cls-head learning rate for LiSANetMT training")
     args = parser.parse_args()
     return args
 
@@ -136,6 +139,7 @@ def main():
     params["dataset_name"] = args.dataset
     params["dataset_path"] = os.path.join(r"./datasets", ("NC-release-data-checked" if args.dataset == "3D-CBCT-Tooth" else args.dataset))
     params["model_name"] = args.model
+    params["task"] = args.task
     if args.pretrain_weight is not None:
         params["pretrain"] = args.pretrain_weight
     params["dimension"] = args.dimension
@@ -188,9 +192,10 @@ def main():
         params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI", "ACC_CLS", "AUC_ROC", "F1_MACRO"]
         params["seg_classes"] = 2 
         params["cls_classes"] = 7 
-        params["lr_cls"] = 0.00003
-        params["lr_seg"] = 0.00005
         params["learning_rate"] = 0.00005
+        # for specific learning rates
+        params["lr_seg"] = args.lr_seg if args.lr_seg is not None else params["learning_rate"]
+        params["lr_cls"] = args.lr_cls if args.lr_cls is not None else params["learning_rate"]
         params["batch_size"] = 16
 
     if args.model == "EGEUNet" and params["segmentation"]:
@@ -205,6 +210,8 @@ def main():
     # initialize the model, optimizer, and lr_scheduler
     model, optimizer, lr_scheduler = models.get_model_optimizer_lr_scheduler(params)
     print("Complete the initialization of model:{}, optimizer:{}, and lr_scheduler:{}".format(params["model_name"], params["optimizer_name"], params["lr_scheduler_name"]))
+    # learning rates seg-head, cls-head, the rest of the model
+    print("Optimizer learning rates:", [group["lr"] for group in optimizer.param_groups])
 
     # initialize the loss function
     loss_functions = losses.get_loss_function(params)
@@ -229,5 +236,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

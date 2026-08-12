@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0.."
 
 
 :: TRAINING
@@ -15,13 +16,13 @@ echo [TRAINING] Segmentation Models...
 @REM python ./train.py --dataset ISIC-2018 --model PMFSNet --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] PMFSNet failed, starting next
 
 
-python ./train.py --dataset ISIC-2018 --model EGEUNet --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] EGEUNet failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model EGEUNet --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] EGEUNet failed, starting next
 
 
-python ./train.py --dataset ISIC-2018 --model LiSANet --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] LiSANet failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model LiSANet --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] LiSANet failed, starting next
 
 
-python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] LiSANetMT failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] LiSANetMT failed, starting next
 
 
 
@@ -42,7 +43,7 @@ echo [TRAINING] Classification Models...
 @REM python ./train.py --dataset ISIC-2018 --model MobileNetV3 --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] MobileNetV3 failed, starting next
 
 
-python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] LiSANetMT failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] LiSANetMT failed, starting next
 
 
 
@@ -126,5 +127,3 @@ python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling
 
 @REM echo.
 @REM pause
-
-
