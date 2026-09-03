@@ -100,7 +100,7 @@ def parse_args():
     parser.add_argument("--model", type=str, default="PMFSNet", help="model name")
     parser.add_argument("--pretrain_weight", type=str, default=None, help="pre-trained weight file path")
     parser.add_argument("--dimension", type=str, default="3d", help="dimension of dataset images and models")
-    parser.add_argument("--scaling_version", type=str, default="TINY", help="scaling version of PMFSNet")
+    parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version used by the trained model")
     parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform"
         )
     args = parser.parse_args()

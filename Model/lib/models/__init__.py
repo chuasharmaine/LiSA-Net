@@ -79,7 +79,14 @@ def get_model_optimizer_lr_scheduler(opt):
 
         # proposed multitask model
         elif opt["model_name"] == "LiSANetMT":
-            model = LiSANetMT(in_channels=opt["in_channels"], seg_out_channels=opt["seg_classes"], cls_out_channels=opt["cls_classes"] if opt["cls_classes"] is not None else 0, dim=opt["dimension"], scaling_version=opt["scaling_version"], segmentation=True, classification=True)
+            model = LiSANetMT(in_channels=opt["in_channels"],
+                seg_out_channels=opt["seg_classes"],
+                cls_out_channels=opt["cls_classes"] if opt["cls_classes"] is not None else 0,
+                dim=opt["dimension"],
+                scaling_version=opt["scaling_version"],
+                segmentation=opt["segmentation"],
+                classification=opt["classification"],
+            )
 
 
         else:
@@ -211,7 +218,15 @@ def get_model(opt):
 
         # proposed multitask model
         elif opt["model_name"] == "LiSANetMT":
-            model = LiSANetMT(in_channels=opt["in_channels"], seg_out_channels=opt["seg_classes"], cls_out_channels=opt["cls_classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"], segmentation=True, classification=True)
+            model = LiSANetMT(
+                in_channels=opt["in_channels"],
+                seg_out_channels=opt["seg_classes"],
+                cls_out_channels=opt["cls_classes"] if opt["cls_classes"] is not None else 0,
+                dim=opt["dimension"],
+                scaling_version=opt["scaling_version"],
+                segmentation=opt["segmentation"],
+                classification=opt["classification"],
+            )
 
     
         else:
