@@ -77,8 +77,8 @@ params_ISIC_2018 = {
         "segmentation": "DiceLoss",
         "classification": "CrossEntropyLoss"
     },
+    # applying class weights to the classification loss
     # DEFAULT: not using class weights to compute the loss function
-    # note. this is used for multitask learning with heavily skewed datasets, where cls task has imbalanced classes
     "use_class_weight": False,
     "class_weight": None,
     # using class weights to compute the loss function
@@ -92,9 +92,11 @@ params_ISIC_2018 = {
     #     13.116, # DF
     #     11.124  # VASC
     # ],
-    # oversample minority classes to balance the class distribution
-    # DEFAULT: not oversampling minority classes
+    # duplicating minority-class samples
+    # DEFAULT (False): no additional duplication of image names
     "oversample": False,
+    # enable minority-class sample duplication
+    # "oversample": True,
     "sigmoid_normalization": False,
     "dice_loss_mode": "extension",
     "dice_mode": "standard",
@@ -108,8 +110,6 @@ params_ISIC_2018 = {
     "best_metric": 0,
     "terminal_show_freq": 20,
     "save_epoch_freq": 5 ,
-    "seg_weight": 0.5,
-    "cls_weight": 0.5,
 }
  
 def parse_args():
@@ -121,7 +121,8 @@ def parse_args():
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version of PMFSNet")
     parser.add_argument("--epoch", type=int, default=150, help="training epoch")
     parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
-    # for specific learning rates
+    # using different learning rates for parts of LiSANetMT
+    #  *note: only applicable for LiSANetMT multitask training
     parser.add_argument("--lr_seg", type=float, default=None, help="seg-head learning rate for LiSANetMT training")
     parser.add_argument("--lr_cls", type=float, default=None, help="cls-head learning rate for LiSANetMT training")
     args = parser.parse_args()
@@ -193,7 +194,9 @@ def main():
         params["seg_classes"] = 2 
         params["cls_classes"] = 7 
         params["learning_rate"] = 0.00005
-        # for specific learning rates
+        # learning rate settings for the experiment
+        #  - use the provided learning rate for each head
+        #  *note: will default to learning_rate when no separate rate is supplied
         params["lr_seg"] = args.lr_seg if args.lr_seg is not None else params["learning_rate"]
         params["lr_cls"] = args.lr_cls if args.lr_cls is not None else params["learning_rate"]
         params["batch_size"] = 16
@@ -210,7 +213,7 @@ def main():
     # initialize the model, optimizer, and lr_scheduler
     model, optimizer, lr_scheduler = models.get_model_optimizer_lr_scheduler(params)
     print("Complete the initialization of model:{}, optimizer:{}, and lr_scheduler:{}".format(params["model_name"], params["optimizer_name"], params["lr_scheduler_name"]))
-    # learning rates seg-head, cls-head, the rest of the model
+    # show the learning rate of each optimizer group
     print("Optimizer learning rates:", [group["lr"] for group in optimizer.param_groups])
 
     # initialize the loss function

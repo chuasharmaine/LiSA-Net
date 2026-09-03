@@ -201,8 +201,12 @@ class LiSANetMT(nn.Module):
         if self.classification and self.classifier_fc is not None:
             cls_features = features
 
+            # segmentation-guided classification
+            #  - with the shared features, segmentation output is provided as additional information to the classifier
+            #  - this works by resizing the predicted logits and concatenating them with the shared features
+            #  - afterwards, the combined features are passed through SE, GAP, and the classification MLP
             if self.seg_guided_cls and "segmentation" in outputs:
-                # Resize segmentation output to match feature map
+                # resize the segmentation output to match the feature map
                 seg_out = outputs["segmentation"]
                 seg_resized = nn.functional.interpolate(
                     seg_out, 

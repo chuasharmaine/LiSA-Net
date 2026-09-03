@@ -62,7 +62,10 @@ class ISIC2018Dataset(Dataset):
 
             self.image_names = [n for n in self.image_names if n in self.cls_labels_dict]
 
-        # oversample minority classes
+        # duplicating minority-class samples
+        #  - to increase its representation in the training set
+        #  - a limit of not exceeding 2x its original count is applied to avoid excessive duplication
+        #  *note: this only repeats the image names in the dataset list
         if self.opt.get("oversample", False) and self.mode == "train" and self.classification:
             class_images = defaultdict(list)
 

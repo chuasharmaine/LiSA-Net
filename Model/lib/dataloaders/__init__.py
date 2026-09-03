@@ -24,6 +24,9 @@ def get_dataloader(opt):
         train_set = ISIC2018Dataset(opt, mode="train")
         valid_set = ISIC2018Dataset(opt, mode="valid")
 
+        # weighted sampling
+        #  - addressing class imbalance by increasing the probability of selecting samples from underrepresented classes
+        #  - images from smaller classes are more likely to be picked in each batch
         if opt.get("classification", False):
             train_counts = [779, 4693, 360, 229, 769, 81, 99]  # MEL, NV, BCC, AKIEC, BKL, DF, VASC
             class_weights = [1.0 / c for c in train_counts]

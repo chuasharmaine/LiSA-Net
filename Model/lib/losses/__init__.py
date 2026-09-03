@@ -25,8 +25,10 @@ def get_loss_function(opt):
         )
     
     if opt.get("classification", False):
-        # compute weights from dataset counts 
-        # checks if class weights are provided (train.py), otherwise uses default None
+        # experiment: applying class weights to the classification loss
+        #  - use the supplied weights when use_class_weight is True
+        #  - otherwise, leave the loss unweighted
+        #  *note: weights are read from the settings, not calculated here
         class_weight = None
 
         if opt.get("use_class_weight", False):

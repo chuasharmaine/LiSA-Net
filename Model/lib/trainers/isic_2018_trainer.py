@@ -267,7 +267,6 @@ class ISIC2018Trainer:
                     cls_out = output
 
             # compute loss
-            total_loss = None
             seg_loss_value = None
             cls_loss_value = None
 
@@ -287,11 +286,11 @@ class ISIC2018Trainer:
                 cls_loss = None
 
             total_loss = None
-            if seg_loss is not None:
-                total_loss = 0.5 * seg_loss if total_loss is None else total_loss +  0.5 * seg_loss
+            if seg_loss is not None: total_loss = seg_loss
 
             if cls_loss is not None:
-                total_loss = 0.5 * cls_loss if total_loss is None else total_loss + 0.5 * cls_loss
+                if total_loss is None: total_loss = cls_loss
+                else: total_loss = total_loss + cls_loss
 
             if seg_loss_value is not None:
                 self.statistics_dict["train"]["seg_loss"] += seg_loss_value * len(input_tensor)

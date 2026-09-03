@@ -115,7 +115,11 @@ def get_model_optimizer_lr_scheduler(opt):
         optimizer = optim.Adam(model.parameters(), lr=opt["learning_rate"], weight_decay=opt["weight_decay"])
 
     elif opt["optimizer_name"] == "AdamW":
-        # if multitask model, use different learning rates for different parts of the model
+        # different learning rates for LiSANetMT segmentation and classification branches
+        #  - for segmentation, learning rate lr_seg is applied to the out_conv layer
+        #  - for classification, learning rate lr_cls is applied to the classifier_fc layer
+        #  - for the rest of the model, the base learning rate learning_rate is applied
+        #  *note: the entire model still trains together
         if opt.get("task") == "multitask" and isinstance(model, LiSANetMT):
             optimizer = optim.AdamW([
                 {"params": model.out_conv.parameters(), "lr": opt["lr_seg"]},
