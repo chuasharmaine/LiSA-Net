@@ -99,10 +99,11 @@ def parse_args():
     parser.add_argument("--dataset", type=str, default="ISIC-2018", help="dataset name")
     parser.add_argument("--model", type=str, default="PMFSNet", help="model name")
     parser.add_argument("--pretrain_weight", type=str, default=None, help="pre-trained weight file path")
-    parser.add_argument("--dimension", type=str, default="3d", help="dimension of dataset images and models")
+    parser.add_argument("--dimension", type=str, default="2d", help="dimension of dataset images and models")
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version used by the trained model")
-    parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform"
-        )
+    parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
+    parser.add_argument("--cls_head_variant", type=str, default="baseline", choices=["baseline", "larger_mlp", "avgmax", "multiscale", "multiscale_larger"], help="classification head used by the LiSANetMT checkpoint")
+    parser.add_argument("--seg_guided_cls", action="store_true", help="enable only for a checkpoint trained with segmentation-guided classification")
     args = parser.parse_args()
 
     if args.dataset == "ISIC-2018":
@@ -129,7 +130,7 @@ def parse_args():
             params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI", "ACC_CLS", "AUC_ROC", "F1_MACRO"]
             params["seg_classes"] = 2 
             params["cls_classes"] = 7 
-            params["seg_guided_cls"] = False
+            params["seg_guided_cls"] = args.seg_guided_cls
     return args
 
 
@@ -160,6 +161,8 @@ def main():
     params["pretrain"] = args.pretrain_weight
     params["dimension"] = args.dimension
     params["scaling_version"] = args.scaling_version
+    params["cls_head_variant"] = args.cls_head_variant
+    params["seg_guided_cls"] = args.seg_guided_cls
 
     # launch initialization
     os.environ["CUDA_VISIBLE_DEVICES"] = params["CUDA_VISIBLE_DEVICES"]

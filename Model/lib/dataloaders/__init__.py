@@ -27,23 +27,30 @@ def get_dataloader(opt):
         # weighted sampling
         #  - addressing class imbalance by increasing the probability of selecting samples from underrepresented classes
         #  - images from smaller classes are more likely to be picked in each batch
-        if opt.get("classification", False):
-            train_counts = [779, 4693, 360, 229, 769, 81, 99]  # MEL, NV, BCC, AKIEC, BKL, DF, VASC
-            class_weights = [1.0 / c for c in train_counts]
+        if opt.get("classification", False) and opt.get("oversample", False):
+            # calculate weights from the actual filtered training list
+            train_labels = [
+                int(torch.tensor(train_set.cls_labels_dict[name]).argmax().item())
+                for name in train_set.image_names
+            ]
+            train_counts = torch.bincount(
+                torch.tensor(train_labels), minlength=opt["cls_classes"]
+            )
+            if torch.any(train_counts == 0):
+                missing_classes = torch.where(train_counts == 0)[0].tolist()
+                raise ValueError(f"Training split has no samples for classification classes: {missing_classes}")
+            class_weights = 1.0 / train_counts.float()
+            sampler_generator = torch.Generator()
+            sampler_generator.manual_seed(opt["seed"])
 
-            # Assign a weight to every sample based on its class label
-            sample_weights = []
-            for i in range(len(train_set)):
-                item = train_set[i]
-                label = item[-1]
-                if hasattr(label, 'item'):
-                    label = label.item()
-                sample_weights.append(class_weights[int(label)])
+            # assign a weight to every sample based on its class label
+            sample_weights = [class_weights[label] for label in train_labels]
 
             sampler = WeightedRandomSampler(
                 weights=torch.tensor(sample_weights, dtype=torch.float),
                 num_samples=len(sample_weights),
-                replacement=True
+                replacement=True,
+                generator=sampler_generator
             )
 
             train_loader = DataLoader(train_set, batch_size=opt["batch_size"], sampler=sampler, num_workers=opt["num_workers"], pin_memory=True)

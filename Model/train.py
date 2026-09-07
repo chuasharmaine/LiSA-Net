@@ -115,12 +115,14 @@ params_ISIC_2018 = {
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default="ISIC-2018", help="dataset name")
-    parser.add_argument("--model", type=str, default="AttU_Net", help="model name")
+    parser.add_argument("--model", type=str, default="LiSANetMT", help="model name")
     parser.add_argument("--pretrain_weight", type=str, default=None, help="pre-trained weight file path")
     parser.add_argument("--dimension", type=str, default="2d", help="dimension of dataset images and models")
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version of PMFSNet")
     parser.add_argument("--epoch", type=int, default=150, help="training epoch")
     parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
+    parser.add_argument("--cls_head_variant", type=str, default="baseline", choices=["baseline", "larger_mlp", "avgmax", "multiscale", "multiscale_larger"], help="LiSANetMT classification-head experiment")
+    parser.add_argument("--seg_guided_cls", action="store_true", help="enable segmentation-guided classification (multitask LiSANetMT only)")
     # using different learning rates for parts of LiSANetMT
     #  *note: only applicable for LiSANetMT multitask training
     parser.add_argument("--lr_seg", type=float, default=None, help="seg-head learning rate for LiSANetMT training")
@@ -145,6 +147,8 @@ def main():
         params["pretrain"] = args.pretrain_weight
     params["dimension"] = args.dimension
     params["scaling_version"] = args.scaling_version
+    params["cls_head_variant"] = args.cls_head_variant
+    params["seg_guided_cls"] = args.seg_guided_cls
     if args.epoch is not None:
         params["end_epoch"] = args.epoch
         params["save_epoch_freq"] = max(1, args.epoch // 4)

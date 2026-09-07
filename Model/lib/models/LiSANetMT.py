@@ -20,9 +20,8 @@ from lib.models.modules.LiSASEBlock import SEBlock
 
 class LiSANetMT(nn.Module):
     def __init__(self, in_channels=1, seg_out_channels=2, cls_out_channels=7, dim="3d", scaling_version="TINY",
-                 basic_module=DownSampleWithLocalPMFSBlock,
-                 global_module=GlobalPMFSBlock_AP_Separate,
-                 segmentation=True, classification=True, seg_guided_cls=False):
+                 basic_module=DownSampleWithLocalPMFSBlock, global_module=GlobalPMFSBlock_AP_Separate,
+                 segmentation=True, classification=True, seg_guided_cls=False, cls_head_variant="baseline"):
         super(LiSANetMT, self).__init__()
         
         self.segmentation = segmentation
@@ -33,6 +32,7 @@ class LiSANetMT(nn.Module):
         #  - False for normal multitask (default)
         #  - True for segmentation-guided classification
         self.seg_guided_cls = seg_guided_cls 
+        self.cls_head_variant = cls_head_variant
 
         if scaling_version == "BASIC":
             base_channels = [24, 48, 64]
@@ -65,6 +65,10 @@ class LiSANetMT(nn.Module):
         growth_rates = [4, 8, 16]
         downsample_channels = [base_channels[i] + units[i] * growth_rates[i] for i in range(len(base_channels))]
 
+        cls_head_variants = {"baseline", "larger_mlp", "avgmax", "multiscale", "multiscale_larger"}
+        if cls_head_variant not in cls_head_variants:
+            raise ValueError(f"Unknown classification head '{cls_head_variant}'. ")
+
         self.down_convs = nn.ModuleList()
         for i in range(3):
             self.down_convs.append(
@@ -90,21 +94,6 @@ class LiSANetMT(nn.Module):
             br=3,
             dim=dim
         )
-
-        if self.classification:
-            cls_in_channels = downsample_channels[-1]
-            if self.seg_guided_cls:
-                cls_in_channels += seg_out_channels
-
-            self.cls_se = SEBlock(cls_in_channels, reduction=8, dim=dim)
-            self.classifier_fc = nn.Sequential(
-                nn.Linear(cls_in_channels, cls_in_channels // 2),
-                nn.ReLU(inplace=True),
-                nn.Dropout(0.3),
-                nn.Linear(cls_in_channels // 2, cls_out_channels)
-            )
-        else:
-            self.classifier_fc = None
 
         if scaling_version == "BASIC":
             self.up2 = torch.nn.Upsample(scale_factor=2, mode=upsample_mode)
@@ -155,6 +144,48 @@ class LiSANetMT(nn.Module):
         else:
             self.out_conv = None
             self.upsample_out = None
+
+        if self.classification:
+            final_channels = downsample_channels[-1]
+            if self.seg_guided_cls:
+                if not self.segmentation or seg_out_channels is None:
+                    raise ValueError("seg_guided_cls requires segmentation=True and seg_out_channels.")
+                final_channels += seg_out_channels
+
+            self.cls_se = SEBlock(final_channels, reduction=8, dim=dim)
+            if cls_head_variant == "avgmax":
+                cls_in_channels = final_channels * 2
+            elif cls_head_variant in {"multiscale", "multiscale_larger"}:
+                cls_in_channels = downsample_channels[0] + downsample_channels[1] + final_channels
+            else:
+                cls_in_channels = final_channels
+
+            # classification-head variant: capacity and feature pooling
+            #  - baseline uses final-feature GAP and the original one-hidden-layer MLP
+            #  - larger_mlp adds capacity without changing the pooled features
+            #  - avgmax combines final-feature global average and maximum pooling
+            #  - multiscale pools early, middle, and attended final features
+            #  - multiscale_larger combines multiscale pooling with the larger MLP
+            if cls_head_variant in {"larger_mlp", "multiscale_larger"}:
+                self.classifier_fc = nn.Sequential(
+                    nn.Linear(cls_in_channels, 512),
+                    nn.ReLU(inplace=True),
+                    nn.Dropout(0.3),
+                    nn.Linear(512, 256),
+                    nn.ReLU(inplace=True),
+                    nn.Dropout(0.3),
+                    nn.Linear(256, cls_out_channels)
+                )
+            else:
+                self.classifier_fc = nn.Sequential(
+                    nn.Linear(cls_in_channels, cls_in_channels // 2),
+                    nn.ReLU(inplace=True),
+                    nn.Dropout(0.3),
+                    nn.Linear(cls_in_channels // 2, cls_out_channels)
+                )
+        else:
+            self.cls_se = None
+            self.classifier_fc = None
 
     def forward(self, x):
         outputs = {}
@@ -217,8 +248,23 @@ class LiSANetMT(nn.Module):
                 cls_features = torch.cat([features, seg_resized], dim=1)
 
             cls_features = self.cls_se(cls_features)
-            cls_features = self.classifier_pool(cls_features)
-            cls_features = torch.flatten(cls_features, 1)
+            #  avgmax pools the final features using both global average and maximum pooling then concatenates them
+            if self.cls_head_variant == "avgmax":
+                cls_avg = torch.flatten(self.classifier_pool(cls_features), 1)
+                spatial_dims = tuple(range(2, cls_features.ndim))
+                cls_max = torch.amax(cls_features, dim=spatial_dims)
+                cls_features = torch.cat([cls_avg, cls_max], dim=1)
+            # multiscale and multiscale_larger pool early, middle, and attended final features
+            elif self.cls_head_variant in {"multiscale", "multiscale_larger"}:
+                cls_features = torch.cat([
+                    torch.flatten(self.classifier_pool(x1), 1),
+                    torch.flatten(self.classifier_pool(x2), 1),
+                    torch.flatten(self.classifier_pool(cls_features), 1)
+                ], dim=1)
+            #  baseline and larger_mlp use only the final features with global average pooling
+            else:
+                cls_features = self.classifier_pool(cls_features)
+                cls_features = torch.flatten(cls_features, 1)
             cls_out = self.classifier_fc(cls_features)
             outputs["classification"] = cls_out
 

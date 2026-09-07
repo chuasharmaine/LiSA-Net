@@ -265,10 +265,34 @@ class ISIC2018Tester:
         if not isinstance(pretrain_state_dict, dict):
             raise TypeError("Checkpoint must be a model state_dict or contain one under 'model' or 'state_dict'.")
         model_state_dict = self.model.state_dict()
-        load_count = 0
-        for param_name in model_state_dict.keys():
-            if (param_name in pretrain_state_dict) and (model_state_dict[param_name].size() == pretrain_state_dict[param_name].size()):
-                model_state_dict[param_name].copy_(pretrain_state_dict[param_name])
-                load_count += 1
-        self.model.load_state_dict(model_state_dict, strict=True)
-        print("{:.2f}% of model parameters successfully loaded with training weights".format(100 * load_count / len(model_state_dict)))
+        # checking checkpoint compatibility before evaluation
+        #  - every model entry must be present and have the expected shape
+        #  - reject extra entries that may belong to a different model setup
+        #  *note: check everything before changing any of the model weights
+        missing_keys = []
+        unexpected_keys = []
+        incompatible_keys = []
+        for name, value in model_state_dict.items():
+            if name not in pretrain_state_dict:
+                missing_keys.append(name)
+            elif not isinstance(pretrain_state_dict[name], torch.Tensor):
+                incompatible_keys.append(name + " (not a tensor)")
+            elif value.shape != pretrain_state_dict[name].shape:
+                incompatible_keys.append(
+                    f"{name}: expected {tuple(value.shape)}, got {tuple(pretrain_state_dict[name].shape)}"
+                )
+        for name in pretrain_state_dict:
+            if name not in model_state_dict:
+                unexpected_keys.append(str(name))
+
+        if missing_keys or unexpected_keys or incompatible_keys:
+            raise RuntimeError(
+                "Checkpoint does not match the model; evaluation stopped. "
+                "Check the model, task, scaling version, class counts, and guidance toggle.\n"
+                f"Missing keys: {missing_keys}\n"
+                f"Unexpected keys: {unexpected_keys}\n"
+                f"Incompatible entries: {incompatible_keys}"
+            )
+
+        self.model.load_state_dict(pretrain_state_dict, strict=True)
+        print("100.00% of model state entries successfully loaded with training weights")

@@ -30,6 +30,10 @@ from .LiSANetMT import LiSANetMT
 
 
 def get_model_optimizer_lr_scheduler(opt):
+    if opt["model_name"] == "LiSANetMT":
+        torch.manual_seed(opt["seed"])
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(opt["seed"])
     # initialize model
     if opt["dataset_name"] == "ISIC-2018":
 
@@ -86,6 +90,8 @@ def get_model_optimizer_lr_scheduler(opt):
                 scaling_version=opt["scaling_version"],
                 segmentation=opt["segmentation"],
                 classification=opt["classification"],
+                seg_guided_cls=opt.get("seg_guided_cls", False),
+                cls_head_variant=opt.get("cls_head_variant", "baseline"),
             )
 
 
@@ -97,6 +103,11 @@ def get_model_optimizer_lr_scheduler(opt):
 
     # initialize model and weights
     model = model.to(opt["device"])
+    # reset before LiSANetMT initialization for changing only the classification head variant
+    if isinstance(model, LiSANetMT):
+        torch.manual_seed(opt["seed"])
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(opt["seed"])
     utils.init_weights(model, init_type="kaiming")
 
     # initialize optimizer
@@ -123,10 +134,10 @@ def get_model_optimizer_lr_scheduler(opt):
         if opt.get("task") == "multitask" and isinstance(model, LiSANetMT):
             optimizer = optim.AdamW([
                 {"params": model.out_conv.parameters(), "lr": opt["lr_seg"]},
-                {"params": model.classifier_fc.parameters(), "lr": opt["lr_cls"]},
+                {"params": list(model.cls_se.parameters()) + list(model.classifier_fc.parameters()), "lr": opt["lr_cls"]},
                 {"params": [
                     p for name, p in model.named_parameters()
-                    if "out_conv" not in name and "classifier_fc" not in name
+                    if "out_conv" not in name and "cls_se" not in name and "classifier_fc" not in name
                 ], "lr": opt["learning_rate"]}
             ], weight_decay=opt["weight_decay"])
         # else, use the same learning rate for all parts of the model
@@ -230,6 +241,8 @@ def get_model(opt):
                 scaling_version=opt["scaling_version"],
                 segmentation=opt["segmentation"],
                 classification=opt["classification"],
+                seg_guided_cls=opt.get("seg_guided_cls", False),
+                cls_head_variant=opt.get("cls_head_variant", "baseline"),
             )
 
     

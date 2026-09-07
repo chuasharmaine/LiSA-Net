@@ -30,7 +30,6 @@ echo [TRAINING] Segmentation Models...
 echo.
 echo [TRAINING] Classification Models...
 
-
 @REM python ./train.py --dataset ISIC-2018 --model ResNet50 --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] ResNet50 failed, starting next
 
 
@@ -42,11 +41,17 @@ echo [TRAINING] Classification Models...
 
 @REM python ./train.py --dataset ISIC-2018 --model MobileNetV3 --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] MobileNetV3 failed, starting next
 
+echo [TRAINING] LiSANetMT cls_head_variants
 
-@REM python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] LiSANetMT failed, starting next
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant baseline || echo [ERROR] LiSANetMT failed, starting next
 
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant larger_mlp || echo [ERROR] LiSANetMT failed, starting next
 
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant avgmax || echo [ERROR] LiSANetMT failed, starting next
 
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant multiscale || echo [ERROR] LiSANetMT failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant multiscale_larger || echo [ERROR] LiSANetMT failed, starting next
 
 @REM :: --- Multitask Model Training ---
 @REM echo.

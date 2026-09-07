@@ -36,6 +36,8 @@ class ISIC2018Trainer:
         self.metric_valid = copy.deepcopy(self.metric) 
         self.best_metric_seg = 0.0
         self.best_metric_cls = 0.0
+        self.best_metric_joint = float("-inf")
+        self.current_validation = {}
         self.device = opt["device"]
         self.seg_classes = opt.get("seg_classes", 1) if opt.get("segmentation") else 0
         self.cls_classes = opt.get("cls_classes", 7) if opt.get("classification") else 0
@@ -68,7 +70,12 @@ class ISIC2018Trainer:
 
         if not self.opt["optimize_params"]:
             if self.opt["resume"] is None:
-                self.execute_dir = os.path.join(opt["run_dir"], utils.datestr() + "_" + opt["model_name"] + "_" + opt["dataset_name"])
+                experiment_name = opt["model_name"]
+                if opt["model_name"] == "LiSANetMT" and opt["classification"]:
+                    experiment_name += "_" + opt.get("cls_head_variant", "baseline")
+                self.execute_dir = os.path.join(
+                    opt["run_dir"], utils.datestr() + "_" + experiment_name + "_" + opt["dataset_name"]
+                )
             else:
                 self.execute_dir = os.path.dirname(os.path.dirname(self.opt["resume"]))
             self.checkpoint_dir = os.path.join(self.execute_dir, "checkpoints")
@@ -78,6 +85,14 @@ class ISIC2018Trainer:
                 utils.make_dirs(self.checkpoint_dir)
                 utils.make_dirs(self.tensorboard_dir)
             utils.pre_write_txt("Complete the initialization of model:{}, optimizer:{}, and lr_scheduler:{}".format(self.opt["model_name"], self.opt["optimizer_name"], self.opt["lr_scheduler_name"]), self.log_txt_path)
+            if self.opt["model_name"] == "LiSANetMT" and self.opt["classification"]:
+                utils.pre_write_txt(
+                    "LiSANetMT configuration: cls_head_variant={}, seg_guided_cls={}".format(
+                        self.opt.get("cls_head_variant", "baseline"),
+                        self.opt.get("seg_guided_cls", False)
+                    ),
+                    self.log_txt_path
+                )
 
         self.start_epoch = self.opt["start_epoch"]
         self.end_epoch = self.opt["end_epoch"]
@@ -134,17 +149,17 @@ class ISIC2018Trainer:
                     epoch, self.end_epoch - 1,
                     self.optimizer.param_groups[0]['lr'],
                     self.statistics_dict["train"]["loss"] / self.statistics_dict["train"]["count"],
-                    train_DSC,
-                    train_mean_IoU,
-                    train_ACC_seg,
-                    train_ACC_cls,
                     seg_loss,
                     cls_loss,
+                    train_ACC_seg,
+                    train_DSC,
+                    train_mean_IoU,
+                    train_ACC_cls,
                     train_F1,
                     train_JI,
+                    valid_ACC_seg,
                     valid_DSC,
                     valid_mean_IoU,
-                    valid_ACC_seg,
                     valid_ACC_cls,
                     valid_F1,
                     valid_AUC,
@@ -286,11 +301,12 @@ class ISIC2018Trainer:
                 cls_loss = None
 
             total_loss = None
-            if seg_loss is not None: total_loss = seg_loss
-
-            if cls_loss is not None:
-                if total_loss is None: total_loss = cls_loss
-                else: total_loss = total_loss + cls_loss
+            if seg_loss is not None and cls_loss is not None:
+                total_loss = 0.5 * seg_loss + 0.5 * cls_loss
+            elif seg_loss is not None:
+                total_loss = seg_loss
+            elif cls_loss is not None:
+                total_loss = cls_loss
 
             if seg_loss_value is not None:
                 self.statistics_dict["train"]["seg_loss"] += seg_loss_value * len(input_tensor)
@@ -422,12 +438,32 @@ class ISIC2018Trainer:
             cur_JI = self.statistics_dict["valid"]["JI_sum"] / valid_count if valid_count > 0 else 0.0
             cur_AUC = self.metric_valid["AUC_ROC"].compute() if self.opt["classification"] else 0.0
 
-            if cur_AUC > self.best_metric_cls and not self.opt["optimize_params"]:
-                self.best_metric_cls = cur_AUC
-                self.save(epoch, cur_AUC, self.best_metric_cls, type="best_cls")
-            if cur_JI > self.best_metric_seg and not self.opt["optimize_params"]:
-                self.best_metric_seg = cur_JI
-                self.save(epoch, cur_JI, self.best_metric_seg, type="best_seg")
+            self.save_best_checkpoints(epoch, cur_JI, cur_AUC)
+
+    def save_best_checkpoints(self, epoch, cur_JI, cur_AUC):
+        # selecting the best complete model for each validation criterion
+        #  - best_seg uses JI; best_cls uses AUC; best uses their average
+        #  *note: each checkpoint contains one whole model from one epoch
+        #  *note: equal scores keep the earlier selected checkpoint
+        self.current_validation = {}
+        if self.opt["segmentation"]: self.current_validation["ji"] = float(cur_JI)
+        if self.opt["classification"]: self.current_validation["auc"] = float(cur_AUC)
+        if self.opt["optimize_params"]: return
+
+        save_seg = self.opt["segmentation"] and np.isfinite(cur_JI) and cur_JI > self.best_metric_seg
+        save_cls = self.opt["classification"] and np.isfinite(cur_AUC) and cur_AUC > self.best_metric_cls
+        save_joint = False
+        if self.opt["segmentation"] and self.opt["classification"]:
+            joint_score = (float(cur_JI) + float(cur_AUC)) / 2
+            self.current_validation["joint_score"] = joint_score
+            save_joint = np.isfinite(cur_JI) and np.isfinite(cur_AUC) and joint_score > self.best_metric_joint
+            if save_joint: self.best_metric_joint = joint_score
+
+        if save_seg: self.best_metric_seg = float(cur_JI)
+        if save_cls: self.best_metric_cls = float(cur_AUC)
+        if save_seg: self.save(epoch, cur_JI, self.best_metric_seg, type="best_seg")
+        if save_cls: self.save(epoch, cur_AUC, self.best_metric_cls, type="best_cls")
+        if save_joint: self.save(epoch, joint_score, self.best_metric_joint, type="best")
 
     def calculate_metric_and_update_statistcs(self, output, target, cur_batch_size, loss=None, mode="train"):
         output = output.detach().cpu()
@@ -567,6 +603,16 @@ class ISIC2018Trainer:
             "epoch": epoch,
             "best_metric_seg": self.best_metric_seg,
             "best_metric_cls": self.best_metric_cls,
+            "best_metric_joint": self.best_metric_joint,
+            "validation": dict(self.current_validation),
+            "checkpoint_selection": "whole_model_mean_validation_iou_auc_v1",
+            "model_configuration": {
+                "task": self.opt.get("task"),
+                "dimension": self.opt.get("dimension"),
+                "scaling_version": self.opt.get("scaling_version"),
+                "seg_guided_cls": self.opt.get("seg_guided_cls", False),
+                "cls_head_variant": self.opt.get("cls_head_variant", "baseline")
+            },
             "model": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "lr_scheduler": self.lr_scheduler.state_dict()
@@ -583,30 +629,6 @@ class ISIC2018Trainer:
             save_filename = '{}_{}.pth'.format(type, self.opt["model_name"])
         save_path = os.path.join(self.checkpoint_dir, save_filename)
         torch.save(self.model.state_dict(), save_path)
-        # if multitask, save combined checkpoint
-        if type in {"best_seg", "best_cls"} and self.opt["segmentation"] and self.opt["classification"]:
-            self.combine_multitask_checkpoint()
-
-    def combine_multitask_checkpoint(self):
-        model_name = self.opt["model_name"]
-        seg_path = os.path.join(self.checkpoint_dir, f"best_seg_{model_name}.pth")
-        cls_path = os.path.join(self.checkpoint_dir, f"best_cls_{model_name}.pth")
-        if not (os.path.exists(seg_path) and os.path.exists(cls_path)):
-            return
-
-        seg_state = torch.load(seg_path, map_location="cpu", weights_only=False)
-        cls_state = torch.load(cls_path, map_location="cpu", weights_only=False)
-        cls_prefixes = ("classifier_fc.", "cls_head.", "fc.")
-        cls_keys = [key for key in cls_state if key.startswith(cls_prefixes)]
-        if not cls_keys:
-            raise RuntimeError(f"No classification-head parameters found for {model_name}.")
-        merged_state = dict(seg_state)
-        for key in cls_keys:
-            if key not in merged_state or merged_state[key].shape != cls_state[key].shape:
-                raise RuntimeError(f"Incompatible multitask checkpoint parameter: {key}")
-            merged_state[key] = cls_state[key]
-
-        torch.save(merged_state, os.path.join(self.checkpoint_dir, f"best_{model_name}.pth"))
 
     def load(self):
         if self.opt["resume"] is not None:
@@ -614,6 +636,10 @@ class ISIC2018Trainer:
             self.start_epoch = checkpoint["epoch"] + 1
             self.best_metric_seg = checkpoint.get("best_metric_seg", 0.0)
             self.best_metric_cls = checkpoint.get("best_metric_cls", 0.0)
+            self.best_metric_joint = checkpoint.get("best_metric_joint", float("-inf"))
+            self.current_validation = checkpoint.get("validation", {})
+            if "best_metric_joint" not in checkpoint and self.opt["segmentation"] and self.opt["classification"]:
+                print("Legacy checkpoint: joint-best selection starts with the resumed epochs; earlier epochs are not ranked.")
             self.model.load_state_dict(checkpoint["model"], strict=True)
             self.optimizer.load_state_dict(checkpoint["optimizer"])
             self.lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
