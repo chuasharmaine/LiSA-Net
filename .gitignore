@@ -1,3 +1,6 @@
+# macOS Finder metadata (all directories)
+.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -165,3 +168,5 @@ inferences/
 inference/
 *.zip
 *.mlmodel
+inference_outputs/
+.DS_Store
