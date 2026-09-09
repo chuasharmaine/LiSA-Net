@@ -605,7 +605,7 @@ class ISIC2018Trainer:
             "best_metric_cls": self.best_metric_cls,
             "best_metric_joint": self.best_metric_joint,
             "validation": dict(self.current_validation),
-            "checkpoint_selection": "whole_model_mean_validation_iou_auc_v1",
+            "checkpoint_selection": "whole_model_mean_validation_ji_auc_v1",
             "model_configuration": {
                 "task": self.opt.get("task"),
                 "dimension": self.opt.get("dimension"),

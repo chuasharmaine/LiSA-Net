@@ -132,12 +132,18 @@ def get_model_optimizer_lr_scheduler(opt):
         #  - for the rest of the model, the base learning rate learning_rate is applied
         #  *note: the entire model still trains together
         if opt.get("task") == "multitask" and isinstance(model, LiSANetMT):
+            cls_params = [
+                p for name, p in model.named_parameters()
+                if name.startswith("cls_") or name.startswith("classifier_")
+            ]
             optimizer = optim.AdamW([
                 {"params": model.out_conv.parameters(), "lr": opt["lr_seg"]},
-                {"params": list(model.cls_se.parameters()) + list(model.classifier_fc.parameters()), "lr": opt["lr_cls"]},
+                {"params": cls_params, "lr": opt["lr_cls"]},
                 {"params": [
                     p for name, p in model.named_parameters()
-                    if "out_conv" not in name and "cls_se" not in name and "classifier_fc" not in name
+                    if "out_conv" not in name
+                    and not name.startswith("cls_")
+                    and not name.startswith("classifier_")
                 ], "lr": opt["learning_rate"]}
             ], weight_decay=opt["weight_decay"])
         # else, use the same learning rate for all parts of the model

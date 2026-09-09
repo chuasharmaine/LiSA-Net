@@ -12,18 +12,23 @@ import torch
 import numpy as np
 
 from lime import lime_image
-from skimage.segmentation import mark_boundaries
+from skimage.segmentation import find_boundaries
 
 
 class LIME:
-    def __init__(self, model):
+    def __init__(self, model, normalize_means=None, normalize_stds=None, style="original"):
         self.model = model
         self.model.eval()
+        self.normalize_means = np.asarray(normalize_means if normalize_means is not None else (0.0, 0.0, 0.0), dtype=np.float32,).reshape(1, 1, 1, -1)
+        self.normalize_stds = np.asarray(normalize_stds if normalize_stds is not None else (1.0, 1.0, 1.0), dtype=np.float32,).reshape(1, 1, 1, -1)
+        self.style = style
 
     def predict_fn(self, images):
         # convert numpy to torch tensor
         device = next(self.model.parameters()).device
         # convert to torch
+        images = np.asarray(images, dtype=np.float32)
+        images = (images - self.normalize_means) / self.normalize_stds
         images = torch.tensor(images, dtype=torch.float32, device=device)
         # NHWC -> NCHW
         images = images.permute(0, 3, 1, 2)
@@ -52,8 +57,10 @@ class LIME:
         # grayscale safety
         if img.ndim == 2:
             img = np.expand_dims(img, axis=-1)
-        # normalize
-        img = (img - img.min()) / (img.max() - img.min() + 1e-8)
+        # normalization
+        means = self.normalize_means.reshape(-1)
+        stds = self.normalize_stds.reshape(-1)
+        img = np.clip(img * stds + means, 0.0, 1.0)
         explainer = lime_image.LimeImageExplainer()
         explanation = explainer.explain_instance(
             img.astype(np.double),
@@ -65,18 +72,28 @@ class LIME:
 
         # predicted class
         pred_class = explanation.top_labels[0]
-        temp, mask = explanation.get_image_and_mask(
+        if self.style == "original":
+            _, mask = explanation.get_image_and_mask(
+                pred_class,
+                positive_only=True,
+                num_features=10,
+                hide_rest=False,
+            )
+            return (mask > 0).astype(np.float32)
+
+        _, mask = explanation.get_image_and_mask(
             pred_class,
-            positive_only=True,
+            positive_only=False,
             num_features=10,
-            hide_rest=False
+            hide_rest=False,
         )
 
-        lime_map = mark_boundaries(temp, mask)
-        # convert to grayscale heatmap
-        if lime_map.ndim == 3:
-            lime_map = np.mean(lime_map, axis=-1)
-        # normalize
-        lime_map = (lime_map - lime_map.min()) / (lime_map.max() - lime_map.min() + 1e-8)
-
-        return lime_map
+        overlay = img.copy()
+        alpha = 0.15
+        positive = mask > 0
+        negative = mask < 0
+        overlay[positive] = (1 - alpha) * overlay[positive] + alpha * np.array([0.0, 1.0, 0.0])
+        overlay[negative] = (1 - alpha) * overlay[negative] + alpha * np.array([1.0, 0.0, 0.0])
+        overlay[find_boundaries(positive, mode="outer")] = np.array([0.0, 1.0, 0.0])
+        overlay[find_boundaries(negative, mode="outer")] = np.array([1.0, 0.0, 0.0])
+        return np.clip(overlay, 0.0, 1.0)

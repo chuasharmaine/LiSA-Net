@@ -23,6 +23,7 @@ from lib import utils, dataloaders, models, metrics, testers
 from lib.explainability.gradcam import GradCam
 from lib.explainability.shap import SHAP
 from lib.explainability.lime import LIME
+from lib.explainability.opticam import OptiCam
 
 params_ISIC_2018 = {
     # ——————————————————————————————————————————————     Launch Initialization    ———————————————————————————————————————————————————
@@ -117,13 +118,14 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default="ISIC-2018", help="dataset name")
     parser.add_argument("--model", type=str, default="LiSANetMT", help="model name")
-    parser.add_argument("--pretrain_weight", type=str, default="pretrain/LiSANet-1000-K1.pth", help="pre-trained weight file path")
-    # loading two pretrain for multitask, todo: combine path next time
-    parser.add_argument("--pretrain_weight_seg", type=str, default=None, help="pre-trained weight file path")
-    parser.add_argument("--pretrain_weight_cls", type=str, default=None, help="pre-trained weight file path")
+    parser.add_argument("--pretrain_weight", type=str, required=True, help="complete model checkpoint (.pth or .state)")
     parser.add_argument("--dimension", type=str, default="2d", help="dimension of dataset images and models")
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version of PMFSNet")
     parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
+    parser.add_argument("--cls_head_variant", type=str, default="baseline", choices=["baseline", "larger_mlp", "avgmax", "multiscale", "multiscale_larger", "projected_fusion", "projected_fusion_se", "lesion_fusion"], help="classification head used by the LiSANetMT checkpoint")
+    parser.add_argument("--seg_guided_cls", action="store_true", help="enable only for a checkpoint trained with segmentation-guided classification")
+    parser.add_argument("--opticam_steps", type=int, default=100, help="Opti-CAM optimization iterations")
+    parser.add_argument("--lime_style", choices=["original", "signed"], default="original", help="LIME visualization style")
     parser.add_argument("--image_path", type=str, default=None, help="path of single inferred image")
     parser.add_argument("--images_dir", type=str, default=None, help="directory containing images for batch inference")
     return parser.parse_args()
@@ -138,6 +140,45 @@ def load_image(image_path, params):
     tfm = my_transforms.Compose([my_transforms.Resize(params["resize_shape"]), my_transforms.ToTensor(), my_transforms.Normalize(mean=params["normalize_means"], std=params["normalize_stds"])])
     image = tfm(image, np.zeros_like(image[:, :, 0]))[0]  # ignore mask
     return image
+
+def load_mask(mask_path, resize_shape):
+    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+    if mask is None:
+        raise FileNotFoundError(mask_path)
+    mask = cv2.resize(mask, (resize_shape[1], resize_shape[0]), interpolation=cv2.INTER_NEAREST)
+    return torch.from_numpy((mask > 0).astype(np.uint8)).unsqueeze(0)
+
+def extract_model_state(checkpoint):
+    if isinstance(checkpoint, dict):
+        if "model" in checkpoint:
+            return checkpoint["model"]
+        if "state_dict" in checkpoint:
+            return checkpoint["state_dict"]
+    return checkpoint
+
+def get_gradcam_target_layer(model):
+    """Return the last shared spatial feature layer used for classification."""
+    if hasattr(model, "down_convs") and len(model.down_convs) > 0:
+        return model.down_convs[-1], "down_convs[-1]"
+    if hasattr(model, "bottleneck"):
+        return model.bottleneck, "bottleneck"
+    if hasattr(model, "encoder"):
+        for index in range(len(model.encoder) - 1, -1, -1):
+            layer = model.encoder[index]
+            if isinstance(layer, nn.Conv2d):
+                return layer, f"encoder[{index}]"
+
+    candidates = [
+        (name, layer)
+        for name, layer in model.named_modules()
+        if isinstance(layer, nn.Conv2d) and "seg" not in name.lower()
+    ]
+    if candidates:
+        name, layer = candidates[-1]
+        return layer, name
+    raise RuntimeError(
+        f"No spatial classification layer found for Grad-CAM on {type(model).__name__}."
+    )
 
 def tensor_to_image(tensor):
     image = tensor.detach().cpu().squeeze()
@@ -168,11 +209,28 @@ def overlay_heatmap(image, heatmap, alpha=0.4, cmap="jet"):
 
     return overlay
 
+
+def overlay_selected_heatmap(image, heatmap, alpha=0.55):
+    if image.max() <= 1.0:
+        img = (image * 255).astype(np.uint8)
+    else:
+        img = image.astype(np.uint8)
+    heatmap = cv2.resize(heatmap.astype(np.float32), (img.shape[1], img.shape[0]))
+    heatmap = np.clip(heatmap, 0.0, 1.0)
+    colour = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
+    colour = cv2.cvtColor(colour, cv2.COLOR_BGR2RGB)
+    result = img.copy()
+    selected = heatmap > 0
+    result[selected] = cv2.addWeighted(img, 1 - alpha, colour, alpha, 0)[selected]
+    return result
+
 def segmentation_inference(model, image, image_path, gt_mask=None):
     model.eval()
 
     with torch.no_grad():
         seg_out = model(image)
+        if isinstance(seg_out, dict):
+            seg_out = seg_out["segmentation"]
         if isinstance(seg_out, tuple):
             seg_out = seg_out[0]
         seg_mask = torch.argmax(seg_out, dim=1)[0].detach().cpu()
@@ -208,6 +266,8 @@ def classification_inference(model, image, image_path, gt_label=None):
 
     with torch.no_grad():
         cls_out = model(image)
+        if isinstance(cls_out, dict):
+            cls_out = cls_out["classification"]
         if isinstance(cls_out, tuple):
             cls_out = cls_out[1]
         probs = F.softmax(cls_out, dim=1)[0]
@@ -240,17 +300,18 @@ def classification_inference(model, image, image_path, gt_label=None):
     print(f"Saved classification log: {log_path}")
     plt.show()
 
-def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_mask=None, gt_label=None):
-    model_seg.eval()
-    model_cls.eval()
+def multitask_inference(model, image, image_path, model_name, gt_mask=None, gt_label=None, opticam_steps=100, lime_style="original"):
+    model.eval()
 
     image.requires_grad = True
-    seg_out = model_seg(image)
-    cls_out = model_cls(image)
-    if isinstance(seg_out, dict):
-        seg_out = seg_out["segmentation"]
-    if isinstance(cls_out, dict):
-        cls_out = cls_out["classification"]
+    output = model(image)
+    if isinstance(output, dict):
+        seg_out = output["segmentation"]
+        cls_out = output["classification"]
+    elif isinstance(output, tuple) and len(output) >= 2:
+        seg_out, cls_out = output[:2]
+    else:
+        raise RuntimeError("Multitask model must return segmentation and classification outputs.")
 
     probs = F.softmax(cls_out, dim=1)[0]
     pred_class = torch.argmax(cls_out).item()
@@ -286,13 +347,23 @@ def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_
             print(f"{idx+1}. {class_names[idx]} — {probs[idx].item()*100:.2f}%")
 
     # GRAD-CAM
-    target_layer = model_cls.down_convs[-1]
-    gradcam = GradCam(model_cls, target_layer)
-    cam = gradcam(model_cls, image, pred_class)
+    target_layer, target_layer_name = get_gradcam_target_layer(model)
+    print(f"Grad-CAM target layer: {target_layer_name}")
+    gradcam = GradCam(model, target_layer)
+    cam = gradcam(model, image, pred_class)
     cam = cam.detach().cpu().squeeze().numpy()
     cam = (cam - cam.min()) / (cam.max() + 1e-8)
     img_np = tensor_to_image(image)
     cam_overlay = overlay_heatmap(img_np, cam, alpha=0.4)
+
+    # Opti-CAM
+    opticam = OptiCam(model, target_layer, steps=opticam_steps)
+    opticam_map = opticam(image.detach(), pred_class).cpu().numpy()
+    opticam_overlay = overlay_heatmap(img_np, opticam_map, alpha=0.4)
+
+    seg_overlay = img_np.copy()
+    lesion = seg_mask.numpy().astype(bool)
+    seg_overlay[lesion] = 0.55 * seg_overlay[lesion] + 0.45 * np.array([0.0, 1.0, 0.0])
 
     class ForwardEx(torch.nn.Module):
         def __init__(self, model, device):
@@ -313,8 +384,8 @@ def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_
             return out
         
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_cls.to(device)
-    forward_fn = ForwardEx(model_cls, device)
+    model.to(device)
+    forward_fn = ForwardEx(model, device)
     forward_fn.eval()
     input_tensor = image.detach()
     
@@ -327,16 +398,19 @@ def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_
     #     print(f"SHAP failed: {e}")
     #     shap_map = np.zeros((224, 224), dtype=np.float32)
 
-    # LIME
-    try:
-        lime = LIME(forward_fn)
-        lime_map = lime(input_tensor)
-        if len(lime_map.shape) == 3:
-            lime_map = np.mean(lime_map, axis=0)
-
-    except Exception as e:
-        print(f"LIME failed: {e}")
-        lime_map = np.zeros((224, 224))
+    # LIME is a required explainability output. Let failures surface instead
+    # of silently displaying an all-zero image as if it were an explanation.
+    lime = LIME(
+        forward_fn,
+        normalize_means=params_ISIC_2018["normalize_means"],
+        normalize_stds=params_ISIC_2018["normalize_stds"],
+        style=lime_style,
+    )
+    lime_map = lime(input_tensor)
+    lime_overlay = (
+        overlay_selected_heatmap(img_np, lime_map)
+        if lime_style == "original" else lime_map
+    )
 
     # output results
     fig = plt.figure(figsize=(18, 10))
@@ -357,10 +431,10 @@ def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_
     pred_str = f"{class_names[pred_class]} ({category})\n{probs[pred_class].item()*100:.2f}%"
     ax_side.text(0.05, 0.82, pred_str, fontsize=18, va='top')
 
-    # ground truth label
-    ax_side.text(0.05, 0.72, r"$\mathbf{Ground\ Truth:}$", fontsize=18, fontweight='bold', va='top')
-    gt_str = f"{class_names[gt_label] if gt_label is not None else 'N/A'}"
-    ax_side.text(0.05, 0.69, gt_str, fontsize=18, va='top')
+    # ground truth label is shown only for a labelled dataset image.
+    if gt_label is not None:
+        ax_side.text(0.05, 0.72, r"$\mathbf{Ground\ Truth:}$", fontsize=18, fontweight='bold', va='top')
+        ax_side.text(0.05, 0.69, class_names[gt_label], fontsize=18, va='top')
 
     # probabilities list
     ax_side.text(0.05, 0.59, r"$\mathbf{Probabilities:}$", fontsize=18, fontweight='bold', va='top')
@@ -381,12 +455,17 @@ def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_
         "• Red: High Importance\n"
         "• Green: Moderate Importance\n"
         "• Blue: Low Importance\n\n"
+        r"$\mathbf{Opti-CAM:}$" + "\n"
+        "• Red: High Importance\n"
+        "• Green: Moderate Importance\n"
+        "• Blue: Low Importance\n\n"
         r"$\mathbf{LIME:}$" + "\n"
-        "• Blue: Positive (Supports Prediction)\n"
-        "• Red: Negative (Against Prediction)"
+        + ("• Red: Selected regions supporting prediction"
+           if lime_style == "original" else
+           "• Green: Supports Prediction\n• Red: Opposes Prediction")
     )
     
-    ax_side.text(0.05, 0.30, legend_text, fontsize=10, va='top', linespacing=1.3)
+    ax_side.text(0.05, 0.30, legend_text, fontsize=9, va='top', linespacing=1.2)
 
     # input image
     ax_img = fig.add_subplot(gs[1, 1])
@@ -394,14 +473,14 @@ def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_
     ax_img.set_title("Input")
     ax_img.axis("off")
 
-    # ground truth mask 
+    # Ground truth is replaced by segmentation overlay when not available
     ax_gt = fig.add_subplot(gs[1, 2])
     if gt_mask is not None:
         ax_gt.imshow(gt_mask.squeeze().cpu(), cmap="gray")
         ax_gt.set_title("Ground Truth Mask")
     else:
-        ax_gt.imshow(seg_mask, cmap="gray")
-        ax_gt.set_title("Ground Truth Mask (N/A)")
+        ax_gt.imshow(seg_overlay)
+        ax_gt.set_title("Segmentation Overlay")
     ax_gt.axis("off")
 
     # predicted mask
@@ -410,17 +489,17 @@ def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_
     ax_pred.set_title("Segmented Mask")
     ax_pred.axis("off")
 
-    # GradCAM
+    # Grad-CAM overlay
     ax_cam = fig.add_subplot(gs[2, 1])
-    ax_cam.imshow(cam, cmap="jet")
-    ax_cam.set_title("Grad-CAM")
-    ax_cam.axis("off")
-
-    # GradCAM
-    ax_cam = fig.add_subplot(gs[2, 2])
     ax_cam.imshow(cam_overlay)
     ax_cam.set_title("Grad-CAM Overlay")
     ax_cam.axis("off")
+
+    # Opti-CAM overlay
+    ax_opti = fig.add_subplot(gs[2, 2])
+    ax_opti.imshow(opticam_overlay)
+    ax_opti.set_title("Opti-CAM Overlay")
+    ax_opti.axis("off")
 
     # # SHAP
     # ax_shap = fig.add_subplot(gs[2, 2])
@@ -430,8 +509,12 @@ def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_
 
     # LIME
     ax_lime = fig.add_subplot(gs[2, 3])
-    ax_lime.imshow(lime_map, cmap="jet")
-    ax_lime.set_title("LIME")
+    if lime_style == "original":
+        ax_lime.imshow(lime_overlay)
+        ax_lime.set_title("LIME Overlay")
+    else:
+        ax_lime.imshow(lime_map)
+        ax_lime.set_title("LIME Signed Overlay")
     ax_lime.axis("off")
 
     plt.tight_layout()
@@ -457,15 +540,16 @@ def main():
     params["dataset_name"] = args.dataset
     params["dataset_path"] = os.path.join(r"./datasets", ("NC-release-data-checked" if args.dataset == "3D-CBCT-Tooth" else args.dataset))
     params["model_name"] = args.model
-    if args.pretrain_weight is None and (args.pretrain_weight_seg is None and args.pretrain_weight_cls is None):
-        raise RuntimeError("model weights cannot be None")
-    if args.task == "multitask":
-        params["pretrain_seg"] = args.pretrain_weight_seg
-        params["pretrain_cls"] = args.pretrain_weight_cls
-    else:
-        params["pretrain"] = args.pretrain_weight
+    params["pretrain"] = args.pretrain_weight
     params["dimension"] = args.dimension
     params["scaling_version"] = args.scaling_version
+    params["cls_head_variant"] = args.cls_head_variant
+    params["seg_guided_cls"] = args.seg_guided_cls
+    params["task"] = args.task
+    params["segmentation"] = args.task in ["segmentation", "multitask"]
+    params["classification"] = args.task in ["classification", "multitask"]
+    params["seg_classes"] = 2 if params["segmentation"] else None
+    params["cls_classes"] = 7 if params["classification"] else None
     if args.image_path is None and args.images_dir is None:
         raise RuntimeError("Either image_path or images_dir must be provided")
 
@@ -483,14 +567,12 @@ def main():
     print("Complete the initialization of configuration")
 
     # initialize the model
-    if args.task == "multitask":
-        model_seg = models.get_model(params)
-        model_cls = models.get_model(params)
-        model_seg.load_state_dict(torch.load(args.pretrain_weight_seg, map_location=params["device"]))
-        model_cls.load_state_dict(torch.load(args.pretrain_weight_cls, map_location=params["device"]))
-    else:
-        model = models.get_model(params)
-        model.load_state_dict(torch.load(args.pretrain_weight, map_location=params["device"]))
+    model = models.get_model(params)
+    checkpoint = torch.load(args.pretrain_weight, map_location=params["device"], weights_only=False)
+    model_state = extract_model_state(checkpoint)
+    if not isinstance(model_state, dict):
+        raise TypeError("Checkpoint must be a model state_dict or contain one under 'model' or 'state_dict'.")
+    model.load_state_dict(model_state, strict=True)
     print("Complete the initialization of model:{}".format(params["model_name"]))
 
     # Detect model task 
@@ -504,11 +586,7 @@ def main():
     print("Complete the initialization of metrics")
 
     # load training weights
-    if args.task == "multitask":
-        model_seg.to(params["device"]).eval()
-        model_cls.to(params["device"]).eval()
-    else:
-        model.to(params["device"]).eval()
+    model.to(params["device"]).eval()
     print("Complete loading training weights")
 
     # prepare images for inference
@@ -535,18 +613,15 @@ def main():
             image_name = os.path.basename(image_path)
             image_stem = os.path.splitext(image_name)[0]
             mask_name = f"{image_stem}_segmentation.png"
-            mask_path = os.path.join(params["dataset_path"], args.task, "test", "masks", mask_name)
+            mask_path = os.path.join(params["dataset_path"], "segmentation", "test", "masks", mask_name)
 
             if os.path.exists(mask_path):
-                gt_mask = load_image(mask_path, params)
-                if gt_mask.ndim == 3:
-                    gt_mask = gt_mask[0]
-                gt_mask = gt_mask.unsqueeze(0)
+                gt_mask = load_mask(mask_path, params["resize_shape"])
             else:
                 print(f"Ground truth mask not found: {mask_path}")
         
         if args.task in ["classification", "multitask"]:
-            labels_path = os.path.join(params["dataset_path"], args.task, "test", "labels.csv")
+            labels_path = os.path.join(params["dataset_path"], "classification", "test", "labels.csv")
             if os.path.exists(labels_path):
                 labels_df = pd.read_csv(labels_path)
                 image_name = os.path.splitext(os.path.basename(image_path))[0]
@@ -563,7 +638,7 @@ def main():
         elif args.task == "classification":
             classification_inference(model, image, image_path, gt_label)
         else:
-            multitask_inference(model_seg, model_cls, image, image_path, args.model, gt_mask, gt_label)
+            multitask_inference(model, image, image_path, args.model, gt_mask, gt_label, args.opticam_steps, args.lime_style)
 
 if __name__ == '__main__':
     main()

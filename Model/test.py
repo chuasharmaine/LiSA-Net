@@ -102,7 +102,7 @@ def parse_args():
     parser.add_argument("--dimension", type=str, default="2d", help="dimension of dataset images and models")
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version used by the trained model")
     parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
-    parser.add_argument("--cls_head_variant", type=str, default="baseline", choices=["baseline", "larger_mlp", "avgmax", "multiscale", "multiscale_larger"], help="classification head used by the LiSANetMT checkpoint")
+    parser.add_argument("--cls_head_variant", type=str, default="baseline", choices=["baseline", "larger_mlp", "avgmax", "multiscale", "multiscale_larger", "projected_fusion", "projected_fusion_se", "lesion_fusion"], help="classification head used by the LiSANetMT checkpoint")
     parser.add_argument("--seg_guided_cls", action="store_true", help="enable only for a checkpoint trained with segmentation-guided classification")
     args = parser.parse_args()
 

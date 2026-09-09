@@ -1,1 +1,0 @@
-The pre-trained weight files are stored in this directory.

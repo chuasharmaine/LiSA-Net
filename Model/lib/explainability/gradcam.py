@@ -18,19 +18,22 @@ class GradCam:
         self.activations = None
 
         target_layer.register_forward_hook(self.forward_hook)
-        target_layer.register_full_backward_hook(self.backward_hook)
 
     def forward_hook(self, module, input, output):
         self.activations = output
+        if output.requires_grad:
+            output.register_hook(self.save_gradient)
 
-    def backward_hook(self, module, grad_input, grad_output):
-        self.gradients = grad_output[0]
+    def save_gradient(self, gradient):
+        self.gradients = gradient
 
     def __call__(self, model, input_image, class_idx):
         model.zero_grad()
         output = self.model(input_image)
         if isinstance(output, dict):
             output = output["classification"]
+        elif isinstance(output, tuple):
+            output = output[1]
         score = output[0, class_idx]
         score.backward(retain_graph=True)
 

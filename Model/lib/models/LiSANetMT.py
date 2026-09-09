@@ -18,6 +18,28 @@ from lib.models.modules.LiSALocalPMFSBlock import DownSampleWithLocalPMFSBlock
 from lib.models.modules.LiSAGlobalPMFSBlock import GlobalPMFSBlock_AP_Separate
 from lib.models.modules.LiSASEBlock import SEBlock
 
+
+class LightweightFeatureProjection(nn.Module):
+    """Align one encoder scale before spatial multiscale fusion."""
+
+    def __init__(self, in_channels, out_channels, dim):
+        super().__init__()
+        conv = nn.Conv3d if dim == "3d" else nn.Conv2d
+        norm = nn.BatchNorm3d if dim == "3d" else nn.BatchNorm2d
+        self.block = nn.Sequential(
+            conv(in_channels, out_channels, kernel_size=1, bias=False),
+            norm(out_channels),
+            nn.SiLU(inplace=True),
+            conv(out_channels, out_channels, kernel_size=3, padding=1,
+                 groups=out_channels, bias=False),
+            norm(out_channels),
+            nn.SiLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.block(x)
+
+
 class LiSANetMT(nn.Module):
     def __init__(self, in_channels=1, seg_out_channels=2, cls_out_channels=7, dim="3d", scaling_version="TINY",
                  basic_module=DownSampleWithLocalPMFSBlock, global_module=GlobalPMFSBlock_AP_Separate,
@@ -65,7 +87,10 @@ class LiSANetMT(nn.Module):
         growth_rates = [4, 8, 16]
         downsample_channels = [base_channels[i] + units[i] * growth_rates[i] for i in range(len(base_channels))]
 
-        cls_head_variants = {"baseline", "larger_mlp", "avgmax", "multiscale", "multiscale_larger"}
+        cls_head_variants = {
+            "baseline", "larger_mlp", "avgmax", "multiscale", "multiscale_larger",
+            "projected_fusion", "projected_fusion_se", "lesion_fusion"
+        }
         if cls_head_variant not in cls_head_variants:
             raise ValueError(f"Unknown classification head '{cls_head_variant}'. ")
 
@@ -146,18 +171,48 @@ class LiSANetMT(nn.Module):
             self.upsample_out = None
 
         if self.classification:
+            projected_variants = {"projected_fusion", "projected_fusion_se", "lesion_fusion"}
+            self.projected_cls_head = cls_head_variant in projected_variants
             final_channels = downsample_channels[-1]
-            if self.seg_guided_cls:
+            if self.seg_guided_cls and not self.projected_cls_head:
                 if not self.segmentation or seg_out_channels is None:
                     raise ValueError("seg_guided_cls requires segmentation=True and seg_out_channels.")
                 final_channels += seg_out_channels
 
-            self.cls_se = SEBlock(final_channels, reduction=8, dim=dim)
+            if self.projected_cls_head:
+                fusion_channels = 64
+                fused_channels = 96
+                self.cls_projections = nn.ModuleList([
+                    LightweightFeatureProjection(channels, fusion_channels, dim)
+                    for channels in downsample_channels
+                ])
+                conv = nn.Conv3d if dim == "3d" else nn.Conv2d
+                norm = nn.BatchNorm3d if dim == "3d" else nn.BatchNorm2d
+                self.cls_fusion = nn.Sequential(
+                    conv(fusion_channels * 3, fused_channels, kernel_size=1, bias=False),
+                    norm(fused_channels),
+                    nn.SiLU(inplace=True),
+                    conv(fused_channels, fused_channels, kernel_size=3, padding=1,
+                         groups=fused_channels, bias=False),
+                    norm(fused_channels),
+                    nn.SiLU(inplace=True),
+                )
+                self.cls_se = (
+                    SEBlock(fused_channels, reduction=8, dim=dim)
+                    if cls_head_variant in {"projected_fusion_se", "lesion_fusion"}
+                    else nn.Identity()
+                )
+                cls_in_channels = fused_channels * (2 if cls_head_variant == "lesion_fusion" else 1)
+            else:
+                self.cls_projections = None
+                self.cls_fusion = None
+                self.cls_se = SEBlock(final_channels, reduction=8, dim=dim)
+
             if cls_head_variant == "avgmax":
                 cls_in_channels = final_channels * 2
             elif cls_head_variant in {"multiscale", "multiscale_larger"}:
                 cls_in_channels = downsample_channels[0] + downsample_channels[1] + final_channels
-            else:
+            elif not self.projected_cls_head:
                 cls_in_channels = final_channels
 
             # classification-head variant: capacity and feature pooling
@@ -184,6 +239,9 @@ class LiSANetMT(nn.Module):
                     nn.Linear(cls_in_channels // 2, cls_out_channels)
                 )
         else:
+            self.projected_cls_head = False
+            self.cls_projections = None
+            self.cls_fusion = None
             self.cls_se = None
             self.classifier_fc = None
 
@@ -232,11 +290,40 @@ class LiSANetMT(nn.Module):
         if self.classification and self.classifier_fc is not None:
             cls_features = features
 
+            if self.projected_cls_head:
+                # align the encoder scales at the smallest spatial size and then fuse them before discarding spatial information
+                #  - more efficient alternative than original multiscale fusion (upsampled all features to the largest spatial size)
+                target_size = x3.shape[2:]
+                projected = []
+                for projection, feature in zip(self.cls_projections, (x1, x2, x3)):
+                    feature = projection(feature)
+                    if feature.shape[2:] != target_size:
+                        feature = nn.functional.interpolate(
+                            feature,
+                            size=target_size,
+                            mode='trilinear' if self.dim == '3d' else 'bilinear',
+                            align_corners=False,
+                        )
+                    projected.append(feature)
+                cls_features = self.cls_fusion(torch.cat(projected, dim=1))
+
+                # the lesion foreground is added to the fused features to softly emphasize the lesion region for classification
+                # - more efficient alternative than original segmentation-guided classification (upsampled segmentation output concatenated with the fused features)
+                if self.seg_guided_cls and "segmentation" in outputs:
+                    lesion_probability = torch.softmax(outputs["segmentation"], dim=1)[:, 1:2]
+                    lesion_probability = nn.functional.interpolate(
+                        lesion_probability,
+                        size=target_size,
+                        mode='trilinear' if self.dim == '3d' else 'bilinear',
+                        align_corners=False,
+                    )
+                    cls_features = cls_features * (1.0 + lesion_probability)
+
             # segmentation-guided classification
             #  - with the shared features, segmentation output is provided as additional information to the classifier
             #  - this works by resizing the predicted logits and concatenating them with the shared features
             #  - afterwards, the combined features are passed through SE, GAP, and the classification MLP
-            if self.seg_guided_cls and "segmentation" in outputs:
+            if self.seg_guided_cls and not self.projected_cls_head and "segmentation" in outputs:
                 # resize the segmentation output to match the feature map
                 seg_out = outputs["segmentation"]
                 seg_resized = nn.functional.interpolate(
@@ -249,7 +336,7 @@ class LiSANetMT(nn.Module):
 
             cls_features = self.cls_se(cls_features)
             #  avgmax pools the final features using both global average and maximum pooling then concatenates them
-            if self.cls_head_variant == "avgmax":
+            if self.cls_head_variant in {"avgmax", "lesion_fusion"}:
                 cls_avg = torch.flatten(self.classifier_pool(cls_features), 1)
                 spatial_dims = tuple(range(2, cls_features.ndim))
                 cls_max = torch.amax(cls_features, dim=spatial_dims)
