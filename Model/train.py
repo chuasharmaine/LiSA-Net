@@ -32,6 +32,7 @@ params_ISIC_2018 = {
     # —————————————————————————————————————————————    Data Loading     ——————————————————————————————————————————————————————
     "dataset_name": "ISIC-2018",
     "dataset_path": r"./datasets/ISIC-2018",
+    "classification_data_source": "classification",
     "batch_size": 32,
     "num_workers": 2,
     # for testing on CPU
@@ -80,6 +81,7 @@ params_ISIC_2018 = {
     # applying class weights to the classification loss
     # DEFAULT: not using class weights to compute the loss function
     "use_class_weight": False,
+    "cls_loss": "cross_entropy",
     "class_weight": None,
     # using class weights to compute the loss function
     # "use_class_weight": True,
@@ -121,6 +123,8 @@ def parse_args():
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version of PMFSNet")
     parser.add_argument("--epoch", type=int, default=150, help="training epoch")
     parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
+    parser.add_argument("--classification_data_source", choices=["classification", "multitask"], default="classification", help="dataset split for classification-only training; multitask uses a leakage-safe train/valid split")
+    parser.add_argument("--cls_loss", choices=["cross_entropy", "focal"], default="cross_entropy", help="classification loss; focal is an opt-in hard-example experiment")
     parser.add_argument("--cls_head_variant", type=str, default="baseline", choices=["baseline", "larger_mlp", "avgmax", "multiscale", "multiscale_larger", "projected_fusion", "projected_fusion_se", "lesion_fusion"], help="LiSANetMT classification-head experiment")
     parser.add_argument("--seg_guided_cls", action="store_true", help="enable segmentation-guided classification (multitask LiSANetMT only)")
     # using different learning rates for parts of LiSANetMT
@@ -135,6 +139,8 @@ def parse_args():
 def main():
     # analyse console arguments
     args = parse_args()
+    if args.classification_data_source == "multitask" and args.task != "classification":
+        raise ValueError("--classification_data_source multitask requires --task classification")
 
     params = params_ISIC_2018
 
@@ -143,6 +149,8 @@ def main():
     params["dataset_path"] = os.path.join(r"./datasets", ("NC-release-data-checked" if args.dataset == "3D-CBCT-Tooth" else args.dataset))
     params["model_name"] = args.model
     params["task"] = args.task
+    params["classification_data_source"] = args.classification_data_source
+    params["cls_loss"] = args.cls_loss
     if args.pretrain_weight is not None:
         params["pretrain"] = args.pretrain_weight
     params["dimension"] = args.dimension

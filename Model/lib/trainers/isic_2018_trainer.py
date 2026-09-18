@@ -73,6 +73,8 @@ class ISIC2018Trainer:
                 experiment_name = opt["model_name"]
                 if opt["model_name"] == "LiSANetMT" and opt["classification"]:
                     experiment_name += "_" + opt.get("cls_head_variant", "baseline")
+                if opt.get("cls_loss") == "focal":
+                    experiment_name += "_focal"
                 self.execute_dir = os.path.join(
                     opt["run_dir"], utils.datestr() + "_" + experiment_name + "_" + opt["dataset_name"]
                 )
@@ -608,6 +610,8 @@ class ISIC2018Trainer:
             "checkpoint_selection": "whole_model_mean_validation_ji_auc_v1",
             "model_configuration": {
                 "task": self.opt.get("task"),
+                "classification_data_source": self.opt.get("classification_data_source", "classification"),
+                "cls_loss": self.opt.get("cls_loss", "cross_entropy"),
                 "dimension": self.opt.get("dimension"),
                 "scaling_version": self.opt.get("scaling_version"),
                 "seg_guided_cls": self.opt.get("seg_guided_cls", False),
@@ -650,7 +654,9 @@ class ISIC2018Trainer:
             return
         
         if self.opt["pretrain"] is not None:
-            pretrain_state_dict = torch.load(self.opt["pretrain"], map_location=lambda storage, loc: storage.cuda(self.device))
+            pretrain_state_dict = torch.load(self.opt["pretrain"], map_location=self.device, weights_only=False)
+            if isinstance(pretrain_state_dict, dict):
+                pretrain_state_dict = pretrain_state_dict.get("model", pretrain_state_dict)
             model_state_dict = self.model.state_dict()
             load_count = 0
             for param_name in model_state_dict.keys():

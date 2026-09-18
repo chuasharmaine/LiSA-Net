@@ -43,7 +43,10 @@ class ISIC2018Dataset(Dataset):
         elif self.segmentation:
             self.root = os.path.join(opt["dataset_path"], "segmentation", mode)
         else:
-            self.root = os.path.join(opt["dataset_path"], "classification", mode)
+            source = opt.get("classification_data_source", "classification")
+            if source not in ("classification", "multitask"):
+                raise ValueError(f"Unknown classification data source: {source}")
+            self.root = os.path.join(opt["dataset_path"], source, mode)
 
         self.image_paths = sorted(glob.glob(os.path.join(self.root, "images", "*.jpg")))
         self.image_names = [os.path.splitext(os.path.basename(p))[0] for p in self.image_paths]

@@ -6,6 +6,9 @@
 @Version  :   1.0
 @License  :   (C)Copyright 2023
 """
+import glob
+import os
+
 import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
@@ -23,6 +26,24 @@ def get_dataloader(opt):
     if opt["dataset_name"] == "ISIC-2018":
         train_set = ISIC2018Dataset(opt, mode="train")
         valid_set = ISIC2018Dataset(opt, mode="valid")
+
+        if (opt.get("classification_data_source") == "multitask"
+                and opt.get("classification") and not opt.get("segmentation")):
+            test_pattern = os.path.join(opt["dataset_path"], "multitask", "test", "images", "*.jpg")
+            test_names = {os.path.splitext(os.path.basename(path))[0] for path in glob.glob(test_pattern)}
+            split_names = {
+                "train": set(train_set.image_names),
+                "valid": set(valid_set.image_names),
+                "test": test_names,
+            }
+            if any(not names for names in split_names.values()):
+                raise ValueError("Multitask train, valid, and test image splits must all be nonempty")
+            for left, right in (("train", "valid"), ("train", "test"), ("valid", "test")):
+                overlap = split_names[left] & split_names[right]
+                if overlap:
+                    raise ValueError(f"Multitask {left}/{right} image leakage: {len(overlap)} shared IDs")
+            print("Classification data: multitask split (train={}, valid={}, held-out test={}; no overlapping image IDs)".format(
+                *(len(split_names[name]) for name in ("train", "valid", "test"))))
 
         # weighted sampling
         #  - addressing class imbalance by increasing the probability of selecting samples from underrepresented classes

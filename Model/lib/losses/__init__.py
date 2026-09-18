@@ -10,6 +10,7 @@ import torch
 
 from .DiceLoss import DiceLoss
 from .CrossEntropyLoss import CrossEntropyLoss
+from .FocalLoss import FocalLoss
 
 def get_loss_function(opt):
     loss_functions = {}
@@ -37,7 +38,15 @@ def get_loss_function(opt):
             if class_weight is not None:
                 class_weight = torch.FloatTensor(class_weight).to(device)
 
-        loss_functions["classification"] = CrossEntropyLoss(weight=class_weight)
+        cls_loss_name = opt.get("cls_loss", "cross_entropy")
+        if cls_loss_name == "focal":
+            if opt.get("use_class_weight", False):
+                raise ValueError("Focal-loss experiment must not also use class weights")
+            loss_functions["classification"] = FocalLoss(gamma=2.0)
+        elif cls_loss_name == "cross_entropy":
+            loss_functions["classification"] = CrossEntropyLoss(weight=class_weight)
+        else:
+            raise ValueError(f"Unknown classification loss: {cls_loss_name}")
 
     if not loss_functions:
         raise RuntimeError(f"No {opt['loss_function_name']} is available")
