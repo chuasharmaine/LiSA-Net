@@ -38,6 +38,8 @@ params_ISIC_2018 = {
     "dataset_path": r"./datasets/ISIC-2018",
     "batch_size": 32,
     "num_workers": 2,
+    "cv_folds": 0,
+    "cv_fold": None,
     # —————————————————————————————————————————————    Model     ——————————————————————————————————————————————————————
     "model_name": "PMFSNet",
     "in_channels": 3,
@@ -104,7 +106,18 @@ def parse_args():
     parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
     parser.add_argument("--cls_head_variant", type=str, default="baseline", choices=["baseline", "larger_mlp", "avgmax", "multiscale", "multiscale_larger", "projected_fusion", "projected_fusion_se", "lesion_fusion"], help="classification head used by the LiSANetMT checkpoint")
     parser.add_argument("--seg_guided_cls", action="store_true", help="enable only for a checkpoint trained with segmentation-guided classification")
+    parser.add_argument("--cv_folds", type=int, default=0, help="number of folds used to train a CV checkpoint")
+    parser.add_argument("--cv_fold", type=int, default=None, help="one-based validation fold for this checkpoint")
     args = parser.parse_args()
+
+    # validate cross-validation arguments
+    if args.cv_folds:
+        if args.task != "multitask":
+            raise ValueError("Cross-validation evaluation currently requires --task multitask")
+        if args.cv_fold is None or not 1 <= args.cv_fold <= args.cv_folds:
+            raise ValueError("--cv_fold must be between 1 and --cv_folds")
+    elif args.cv_fold is not None:
+        raise ValueError("--cv_fold requires --cv_folds")
 
     if args.dataset == "ISIC-2018":
         params = params_ISIC_2018
@@ -163,6 +176,8 @@ def main():
     params["scaling_version"] = args.scaling_version
     params["cls_head_variant"] = args.cls_head_variant
     params["seg_guided_cls"] = args.seg_guided_cls
+    params["cv_folds"] = args.cv_folds
+    params["cv_fold"] = args.cv_fold - 1 if args.cv_fold is not None else None
 
     # launch initialization
     os.environ["CUDA_VISIBLE_DEVICES"] = params["CUDA_VISIBLE_DEVICES"]

@@ -7,6 +7,7 @@
 @License  :   (C)Copyright 2024
 """
 import os
+import csv
 import cv2
 import numpy as np
 from PIL import Image
@@ -160,6 +161,54 @@ class ISIC2018Tester:
             F1_MACRO = self.metrics["F1_MACRO"].compute()
             
             print("valid_ACC_cls:{:.6f}  valid_AUC_ROC:{:.6f}  valid_F1_MACRO:{:.6f}".format(ACC_cls, AUC_ROC, F1_MACRO))
+            self.write_classification_report()
+
+    # write per-class classification report and confusion matrix to CSV files 
+    # for each class: support, predicted, precision, recall, F1 score
+    def write_classification_report(self):
+        targets = np.asarray(self.classification_targets, dtype=int)
+        predictions = np.asarray(self.classification_predictions, dtype=int)
+        num_classes = self.opt["cls_classes"]
+        confusion = np.zeros((num_classes, num_classes), dtype=np.int64)
+        np.add.at(confusion, (targets, predictions), 1)
+
+        rows = []
+        recalls = []
+        for class_index in range(num_classes):
+            true_positive = confusion[class_index, class_index]
+            support = confusion[class_index].sum()
+            predicted = confusion[:, class_index].sum()
+            precision = true_positive / predicted if predicted else 0.0
+            recall = true_positive / support if support else 0.0
+            f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+            recalls.append(recall)
+            rows.append([
+                self.opt["index_to_class_dict"][class_index], int(support), int(predicted),
+                precision, recall, f1
+            ])
+
+        print("valid_BALANCED_ACC:{:.6f}".format(float(np.mean(recalls))))
+        for class_name, support, _, precision, recall, f1 in rows:
+            print(
+                f"{class_name}: support={support} precision={precision:.6f} "
+                f"recall={recall:.6f} f1={f1:.6f}"
+            )
+
+        checkpoint_stem = os.path.splitext(self.opt["pretrain"])[0]
+        report_path = checkpoint_stem + "_per_class.csv"
+        confusion_path = checkpoint_stem + "_confusion_matrix.csv"
+        with open(report_path, "w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["class", "support", "predicted", "precision", "recall", "f1"])
+            writer.writerows(rows)
+        with open(confusion_path, "w", newline="") as file:
+            writer = csv.writer(file)
+            class_names = [self.opt["index_to_class_dict"][i] for i in range(num_classes)]
+            writer.writerow(["actual / predicted"] + class_names)
+            for class_index, class_name in enumerate(class_names):
+                writer.writerow([class_name] + confusion[class_index].tolist())
+        print(f"Saved per-class report: {report_path}")
+        print(f"Saved confusion matrix: {confusion_path}")
 
     def calculate_metric_and_update_statistcs(self, output, target, cur_batch_size, task="segmentation"):
         
@@ -178,6 +227,8 @@ class ISIC2018Tester:
             self.statistics_dict["seg_count"] += cur_batch_size
         else:
             self.statistics_dict["cls_count"] += cur_batch_size
+            self.classification_predictions.extend(torch.argmax(output, dim=1).tolist())
+            self.classification_targets.extend(target.tolist())
         for i, class_name in self.opt["index_to_class_dict"].items():
             if i >= num_classes:
                 continue
@@ -240,6 +291,8 @@ class ISIC2018Tester:
         return statistics_dict
 
     def reset_statistics_dict(self):
+        self.classification_predictions = []
+        self.classification_targets = []
         self.statistics_dict["seg_count"] = 0
         self.statistics_dict["cls_count"] = 0
         num_classes = (

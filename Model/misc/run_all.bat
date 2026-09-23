@@ -43,15 +43,41 @@ echo [TRAINING] Classification Models...
 
 echo [TRAINING] LiSANetMT cls_head_variants
 
-python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant baseline || echo [ERROR] LiSANetMT failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant baseline || echo [ERROR] LiSANetMT failed, starting next
 
-python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant larger_mlp || echo [ERROR] LiSANetMT failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant larger_mlp || echo [ERROR] LiSANetMT failed, starting next
 
-python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant avgmax || echo [ERROR] LiSANetMT failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant avgmax || echo [ERROR] LiSANetMT failed, starting next
 
-python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant multiscale || echo [ERROR] LiSANetMT failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant multiscale || echo [ERROR] LiSANetMT failed, starting next
 
-python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant multiscale_larger || echo [ERROR] LiSANetMT failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification --cls_head_variant multiscale_larger || echo [ERROR] LiSANetMT failed, starting next
+
+
+echo.
+echo [TRAINING] LiSANetMT-LR 5-Fold Cross-Validation...
+
+:: Standard cross-entropy
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 1 || echo [ERROR] Standard fold 1 failed, starting next
+
+@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 2 || echo [ERROR] Standard fold 2 failed, starting next
+
+@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 3 || echo [ERROR] Standard fold 3 failed, starting next
+
+@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 4 || echo [ERROR] Standard fold 4 failed, starting next
+
+@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 5 || echo [ERROR] Standard fold 5 failed, starting next
+
+:: Tempered inverse-frequency class weights
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 1 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 1 failed, starting next
+
+@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 2 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 2 failed, starting next
+
+@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 3 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 3 failed, starting next
+
+@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 4 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 4 failed, starting next
+
+@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 5 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 5 failed
 
 @REM :: --- Multitask Model Training ---
 @REM echo.

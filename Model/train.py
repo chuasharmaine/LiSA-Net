@@ -35,6 +35,9 @@ params_ISIC_2018 = {
     "classification_data_source": "classification",
     "batch_size": 32,
     "num_workers": 2,
+    "cv_folds": 0,
+    "cv_fold": None,
+    "class_weighting": "none",
     # for testing on CPU
     # "batch_size": 2,
     # "num_workers": 0,
@@ -125,6 +128,9 @@ def parse_args():
     parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
     parser.add_argument("--classification_data_source", choices=["classification", "multitask"], default="classification", help="dataset split for classification-only training; multitask uses a leakage-safe train/valid split")
     parser.add_argument("--cls_loss", choices=["cross_entropy", "focal"], default="cross_entropy", help="classification loss; focal is an opt-in hard-example experiment")
+    parser.add_argument("--cv_folds", type=int, default=0, help="number of stratified development folds; use 5 for the thesis experiment")
+    parser.add_argument("--cv_fold", type=int, default=None, help="one-based fold to train (1 through cv_folds)")
+    parser.add_argument("--class_weighting", choices=["none", "sqrt_inverse"], default="none", help="fold-specific tempered inverse-frequency classification weights")
     parser.add_argument("--cls_head_variant", type=str, default="baseline", choices=["baseline", "larger_mlp", "avgmax", "multiscale", "multiscale_larger", "projected_fusion", "projected_fusion_se", "lesion_fusion"], help="LiSANetMT classification-head experiment")
     parser.add_argument("--seg_guided_cls", action="store_true", help="enable segmentation-guided classification (multitask LiSANetMT only)")
     # using different learning rates for parts of LiSANetMT
@@ -141,6 +147,18 @@ def main():
     args = parse_args()
     if args.classification_data_source == "multitask" and args.task != "classification":
         raise ValueError("--classification_data_source multitask requires --task classification")
+    # validate cross-validation arguments
+    if args.cv_folds:
+        if args.task != "multitask":
+            raise ValueError("Cross-validation currently requires --task multitask")
+        if args.cv_fold is None or not 1 <= args.cv_fold <= args.cv_folds:
+            raise ValueError("--cv_fold must be between 1 and --cv_folds")
+        if args.cls_loss != "cross_entropy":
+            raise ValueError("The planned CV comparison uses cross-entropy, not focal loss")
+    elif args.cv_fold is not None:
+        raise ValueError("--cv_fold requires --cv_folds")
+    if args.class_weighting != "none" and not args.cv_folds:
+        raise ValueError("--class_weighting is only enabled for the fold-specific CV experiment")
 
     params = params_ISIC_2018
 
@@ -151,6 +169,10 @@ def main():
     params["task"] = args.task
     params["classification_data_source"] = args.classification_data_source
     params["cls_loss"] = args.cls_loss
+    params["cv_folds"] = args.cv_folds
+    params["cv_fold"] = args.cv_fold - 1 if args.cv_fold is not None else None
+    params["class_weighting"] = args.class_weighting
+    params["use_class_weight"] = args.class_weighting != "none"
     if args.pretrain_weight is not None:
         params["pretrain"] = args.pretrain_weight
     params["dimension"] = args.dimension

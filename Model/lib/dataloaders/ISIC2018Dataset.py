@@ -26,7 +26,7 @@ class ISIC2018Dataset(Dataset):
     load ISIC 2018 dataset
     """
 
-    def __init__(self, opt, mode):
+    def __init__(self, opt, mode, source_modes=None, image_names=None):
         """
         initialize ISIC 2018 dataset
         :param opt: params dict
@@ -39,29 +39,50 @@ class ISIC2018Dataset(Dataset):
         self.classification = opt["classification"]
 
         if self.segmentation and self.classification:
-            self.root = os.path.join(opt["dataset_path"], "multitask", mode)
+            data_source = "multitask"
         elif self.segmentation:
-            self.root = os.path.join(opt["dataset_path"], "segmentation", mode)
+            data_source = "segmentation"
         else:
-            source = opt.get("classification_data_source", "classification")
-            if source not in ("classification", "multitask"):
-                raise ValueError(f"Unknown classification data source: {source}")
-            self.root = os.path.join(opt["dataset_path"], source, mode)
+            data_source = opt.get("classification_data_source", "classification")
+            if data_source not in ("classification", "multitask"):
+                raise ValueError(f"Unknown classification data source: {data_source}")
 
-        self.image_paths = sorted(glob.glob(os.path.join(self.root, "images", "*.jpg")))
-        self.image_names = [os.path.splitext(os.path.basename(p))[0] for p in self.image_paths]
+        source_modes = source_modes or (mode,)
+        self.root = os.path.join(opt["dataset_path"], data_source, source_modes[0])
+        self.image_root_dict = {}
+        discovered_names = []
+        for source_mode in source_modes:
+            source_root = os.path.join(opt["dataset_path"], data_source, source_mode)
+            for path in sorted(glob.glob(os.path.join(source_root, "images", "*.jpg"))):
+                name = os.path.splitext(os.path.basename(path))[0]
+                if name in self.image_root_dict:
+                    raise ValueError(f"Duplicate image ID across source splits: {name}")
+                self.image_root_dict[name] = source_root
+                discovered_names.append(name)
+
+        if image_names is None:
+            self.image_names = discovered_names
+        else:
+            missing = sorted(set(image_names) - set(self.image_root_dict))
+            if missing:
+                raise ValueError(f"Selected images are missing from the source splits: {missing[:5]}")
+            self.image_names = list(image_names)
 
         self.cls_labels_dict = {}
         # Classification
         if self.classification:
-            label_csv = os.path.join(self.root, "labels.csv")
-            with open(label_csv, "r") as f:
-                reader = csv.reader(f)
-                header = next(reader)  
-                for row in reader:
-                    image_id = row[0]
-                    labels = list(map(float, row[1:]))
-                    self.cls_labels_dict[image_id] = labels
+            for source_mode in source_modes:
+                label_csv = os.path.join(opt["dataset_path"], data_source, source_mode, "labels.csv")
+                with open(label_csv, "r") as f:
+                    reader = csv.reader(f)
+                    next(reader)
+                    for row in reader:
+                        image_id = row[0]
+                        labels = list(map(float, row[1:]))
+                        previous = self.cls_labels_dict.get(image_id)
+                        if previous is not None and previous != labels:
+                            raise ValueError(f"Conflicting labels for image ID: {image_id}")
+                        self.cls_labels_dict[image_id] = labels
 
             self.image_names = [n for n in self.image_names if n in self.cls_labels_dict]
 
@@ -114,7 +135,8 @@ class ISIC2018Dataset(Dataset):
     def __getitem__(self, index):
         image_name = self.image_names[index]
         
-        img_path = os.path.join(self.root, "images", image_name + ".jpg")
+        image_root = self.image_root_dict[image_name]
+        img_path = os.path.join(image_root, "images", image_name + ".jpg")
         image = cv2.imread(img_path)
 
         if image is None:
@@ -124,7 +146,7 @@ class ISIC2018Dataset(Dataset):
 
         mask = None
         if self.segmentation:
-            mask_path = os.path.join(self.root, "masks", image_name + "_segmentation.png")
+            mask_path = os.path.join(image_root, "masks", image_name + "_segmentation.png")
             mask = cv2.imread(mask_path, 0)
             if mask is None:
                 raise RuntimeError(f"Missing mask: {mask_path}")

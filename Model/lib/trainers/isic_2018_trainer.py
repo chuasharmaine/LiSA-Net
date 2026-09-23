@@ -75,6 +75,12 @@ class ISIC2018Trainer:
                     experiment_name += "_" + opt.get("cls_head_variant", "baseline")
                 if opt.get("cls_loss") == "focal":
                     experiment_name += "_focal"
+                if opt.get("cv_folds"):
+                    experiment_name += "_cv{}_fold{}".format(
+                        opt["cv_folds"], opt["cv_fold"] + 1
+                    )
+                if opt.get("class_weighting") != "none":
+                    experiment_name += "_" + opt["class_weighting"]
                 self.execute_dir = os.path.join(
                     opt["run_dir"], utils.datestr() + "_" + experiment_name + "_" + opt["dataset_name"]
                 )
@@ -612,6 +618,10 @@ class ISIC2018Trainer:
                 "task": self.opt.get("task"),
                 "classification_data_source": self.opt.get("classification_data_source", "classification"),
                 "cls_loss": self.opt.get("cls_loss", "cross_entropy"),
+                "cv_folds": self.opt.get("cv_folds", 0),
+                "cv_fold": self.opt.get("cv_fold"),
+                "class_weighting": self.opt.get("class_weighting", "none"),
+                "class_weight": self.opt.get("class_weight"),
                 "dimension": self.opt.get("dimension"),
                 "scaling_version": self.opt.get("scaling_version"),
                 "seg_guided_cls": self.opt.get("seg_guided_cls", False),
