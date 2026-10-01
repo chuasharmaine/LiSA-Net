@@ -1,7 +1,7 @@
 import torch.nn as nn
 from torchvision import models
 
-def ResNet50(num_classes, pretrained=True):
+def ResNet50(num_classes, pretrained=False):
     model = models.resnet50(pretrained=pretrained)
 
     # replace classifier

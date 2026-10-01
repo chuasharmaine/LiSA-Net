@@ -55,29 +55,72 @@ echo [TRAINING] LiSANetMT cls_head_variants
 
 
 echo.
-echo [TRAINING] LiSANetMT-LR 5-Fold Cross-Validation...
+echo [TRAINING] Base LiSANetMT 5-Fold Cross-Validation...
 
 :: Standard cross-entropy
-python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 1 || echo [ERROR] Standard fold 1 failed, starting next
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 1 || echo [ERROR] Base LiSANetMT fold 1 failed, starting next
 
-@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 2 || echo [ERROR] Standard fold 2 failed, starting next
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 2 || echo [ERROR] Base LiSANetMT fold 2 failed, starting next
 
-@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 3 || echo [ERROR] Standard fold 3 failed, starting next
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 3 || echo [ERROR] Base LiSANetMT fold 3 failed, starting next
 
-@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 4 || echo [ERROR] Standard fold 4 failed, starting next
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 4 || echo [ERROR] Base LiSANetMT fold 4 failed, starting next
 
-@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 5 || echo [ERROR] Standard fold 5 failed, starting next
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 5 || echo [ERROR] Base LiSANetMT fold 5 failed
+
+
+echo.
+echo [TRAINING] LiSANetMT Lesion Fusion-LR 5-Fold Cross-Validation...
+
+:: Standard cross-entropy
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cls_head_variant lesion_fusion --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 1 || echo [ERROR] Standard fold 1 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cls_head_variant lesion_fusion --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 2 || echo [ERROR] Standard fold 2 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cls_head_variant lesion_fusion --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 3 || echo [ERROR] Standard fold 3 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cls_head_variant lesion_fusion --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 4 || echo [ERROR] Standard fold 4 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cls_head_variant lesion_fusion --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 5 || echo [ERROR] Standard fold 5 failed, starting next
 
 :: Tempered inverse-frequency class weights
-python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 1 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 1 failed, starting next
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cls_head_variant lesion_fusion --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 1 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 1 failed, starting next
 
-@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 2 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 2 failed, starting next
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cls_head_variant lesion_fusion --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 2 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 2 failed, starting next
 
-@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 3 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 3 failed, starting next
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cls_head_variant lesion_fusion --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 3 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 3 failed, starting next
 
-@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 4 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 4 failed, starting next
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cls_head_variant lesion_fusion --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 4 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 4 failed, starting next
 
-@REM  python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 5 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 5 failed
+python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cls_head_variant lesion_fusion --lr_seg 0.00005 --lr_cls 0.00003 --cv_folds 5 --cv_fold 5 --class_weighting sqrt_inverse || echo [ERROR] Weighted fold 5 failed
+
+
+echo.
+echo [TRAINING] MBDCNN 5-Fold Cross-Validation...
+
+python ./train.py --dataset ISIC-2018 --model MBDCNN --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 1 || echo [ERROR] MBDCNN fold 1 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model MBDCNN --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 2 || echo [ERROR] MBDCNN fold 2 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model MBDCNN --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 3 || echo [ERROR] MBDCNN fold 3 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model MBDCNN --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 4 || echo [ERROR] MBDCNN fold 4 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model MBDCNN --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 5 || echo [ERROR] MBDCNN fold 5 failed
+
+
+echo.
+echo [TRAINING] BreastCancerMT 5-Fold Cross-Validation...
+
+python ./train.py --dataset ISIC-2018 --model BreastCancerMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 1 || echo [ERROR] BreastCancerMT fold 1 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model BreastCancerMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 2 || echo [ERROR] BreastCancerMT fold 2 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model BreastCancerMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 3 || echo [ERROR] BreastCancerMT fold 3 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model BreastCancerMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 4 || echo [ERROR] BreastCancerMT fold 4 failed, starting next
+
+python ./train.py --dataset ISIC-2018 --model BreastCancerMT --dimension 2d --scaling_version BASIC --epoch 150 --task multitask --cv_folds 5 --cv_fold 5 || echo [ERROR] BreastCancerMT fold 5 failed
 
 @REM :: --- Multitask Model Training ---
 @REM echo.

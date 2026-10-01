@@ -53,16 +53,16 @@ def get_model_optimizer_lr_scheduler(opt):
 
         # classification only models
         elif opt["model_name"] == "ResNet50":
-            model = ResNet50(num_classes=opt["cls_classes"], pretrained=True)
+            model = ResNet50(num_classes=opt["cls_classes"], pretrained=False)
 
         elif opt["model_name"] == "DenseNet121":
-            model = DenseNet121(num_classes=opt["cls_classes"], pretrained=True)
+            model = DenseNet121(num_classes=opt["cls_classes"], pretrained=False)
 
         elif opt["model_name"] == "EfficientNetV2":
-            model = EfficientNetV2(num_classes=opt["cls_classes"], pretrained=True)
+            model = EfficientNetV2(num_classes=opt["cls_classes"], pretrained=False)
 
         elif opt["model_name"] in ["MobileNetV3", "mobilenetv3_large_100"]:
-            model = MobileNetV3(num_classes=opt["cls_classes"], pretrained=True)
+            model = MobileNetV3(num_classes=opt["cls_classes"], pretrained=False)
 
 
         # multitask models
@@ -210,16 +210,16 @@ def get_model(opt):
 
         # classification only models
         elif opt["model_name"] == "ResNet50":
-            model = ResNet50(num_classes=opt["cls_classes"], pretrained=True)
+            model = ResNet50(num_classes=opt["cls_classes"], pretrained=False)
 
         elif opt["model_name"] == "DenseNet121":
-            model = DenseNet121(num_classes=opt["cls_classes"], pretrained=True)
+            model = DenseNet121(num_classes=opt["cls_classes"], pretrained=False)
 
         elif opt["model_name"] == "EfficientNetV2":
-            model = EfficientNetV2(num_classes=opt["cls_classes"], pretrained=True)
+            model = EfficientNetV2(num_classes=opt["cls_classes"], pretrained=False)
 
         elif opt["model_name"] in ["MobileNetV3", "mobilenetv3_large_100"]:
-            model = MobileNetV3(num_classes=opt["cls_classes"], pretrained=True)
+            model = MobileNetV3(num_classes=opt["cls_classes"], pretrained=False)
 
 
         # multitask models

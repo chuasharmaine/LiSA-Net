@@ -1,6 +1,6 @@
 import timm
 
-def EfficientNetV2(num_classes, pretrained=True):
+def EfficientNetV2(num_classes, pretrained=False):
     model = timm.create_model(
         "tf_efficientnetv2_m",
         pretrained=pretrained,

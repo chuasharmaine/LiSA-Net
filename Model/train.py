@@ -114,7 +114,6 @@ params_ISIC_2018 = {
     # "end_epoch": 1,
     "best_metric": 0,
     "terminal_show_freq": 20,
-    "save_epoch_freq": 5 ,
 }
  
 def parse_args():
@@ -181,7 +180,7 @@ def main():
     params["seg_guided_cls"] = args.seg_guided_cls
     if args.epoch is not None:
         params["end_epoch"] = args.epoch
-        params["save_epoch_freq"] = max(1, args.epoch // 4)
+        params["save_epoch_freq"] = max(1, args.epoch // 5)
 
     # launch initialization
     os.environ["CUDA_VISIBLE_DEVICES"] = params["CUDA_VISIBLE_DEVICES"]
